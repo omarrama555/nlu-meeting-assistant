@@ -5,8 +5,7 @@ plotly
 transformers
 sentence-transformers
 torch
-whisper
+openai-whisper
 fpdf
 wordcloud
 matplotlib
-st-audiorec
