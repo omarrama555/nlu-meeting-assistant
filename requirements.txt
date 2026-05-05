@@ -9,6 +9,3 @@ openai-whisper
 fpdf
 wordcloud
 matplotlib
-accelerate
-python-dotenv
-orjson
