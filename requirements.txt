@@ -2,6 +2,10 @@ streamlit
 numpy
 pandas
 plotly
-textblob
-nltk
-whisper
+transformers
+sentence-transformers
+torch
+openai-whisper
+fpdf
+wordcloud
+matplotlib
