@@ -1,451 +1,1035 @@
-import os
-os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "1"
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
-
 import streamlit as st
-import torch
-import numpy as np
-import re
-import json
 import time
-import tempfile
-from collections import Counter
+import json
+import os
+import io
+import base64
+import numpy as np
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+from datetime import datetime
 
-st.set_page_config(page_title="NLU Meeting Intelligence", page_icon="🎙️", layout="wide", initial_sidebar_state="expanded")
+# ─── PAGE CONFIG ──────────────────────────────────────────────────────────────
+st.set_page_config(
+    page_title="NLU Intelligence Suite",
+    page_icon=None,
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
+# ─── DARK THEME CSS ───────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600&display=swap');
-:root{--bg:#03060e;--card:#070c1a;--card2:#0a1020;--border:#111929;--text:#e2e8f0;--muted:#334466;}
-html,body,[class*="css"]{font-family:'DM Sans',sans-serif;background-color:var(--bg)!important;color:var(--text);}
-#MainMenu,footer,header{visibility:hidden;}
-.block-container{padding-top:1rem;max-width:1280px;}
-.hero{background:linear-gradient(135deg,#03060e 0%,#07102a 50%,#03060e 100%);border:1px solid var(--border);border-radius:16px;padding:1.8rem 2.2rem 1.6rem;margin-bottom:1.4rem;position:relative;overflow:hidden;}
-.hero::before{content:'';position:absolute;top:-60px;right:-60px;width:280px;height:280px;border-radius:50%;background:radial-gradient(circle,rgba(59,130,246,.1) 0%,transparent 70%);}
-.hero-title{font-family:'Syne',sans-serif;font-size:2rem;font-weight:800;background:linear-gradient(135deg,#60a5fa,#a78bfa,#22d3ee);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin:0 0 .25rem;}
-.hero-sub{color:var(--muted);font-size:.82rem;font-family:'DM Mono',monospace;margin:0 0 1rem;}
-.pills{display:flex;flex-wrap:wrap;gap:.35rem;}
-.pill{background:rgba(59,130,246,.07);border:1px solid rgba(59,130,246,.18);color:#7eb3f8;padding:.18rem .65rem;border-radius:30px;font-size:.7rem;font-family:'DM Mono',monospace;}
-.pipe{display:flex;align-items:center;flex-wrap:wrap;background:var(--card);border:1px solid var(--border);border-radius:11px;padding:.7rem 1.1rem;margin-bottom:1.3rem;}
-.pipe-step{display:flex;flex-direction:column;align-items:center;flex:1;min-width:70px;padding:.25rem .4rem;text-align:center;}
-.pipe-icon{font-size:1.2rem;margin-bottom:.15rem;}
-.pipe-name{font-size:.72rem;font-weight:700;color:var(--text);font-family:'Syne',sans-serif;}
-.pipe-sub{font-size:.62rem;color:var(--muted);font-family:'DM Mono',monospace;}
-.pipe-arr{color:var(--muted);font-size:.9rem;}
-.mgrid{display:grid;grid-template-columns:repeat(6,1fr);gap:.7rem;margin-bottom:1.3rem;}
-.mcard{background:var(--card);border:1px solid var(--border);border-radius:11px;padding:.9rem 1rem;position:relative;overflow:hidden;}
-.mcard::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;}
-.mcard.b::before{background:linear-gradient(90deg,#3b82f6,#06b6d4);}
-.mcard.v::before{background:linear-gradient(90deg,#7c3aed,#ec4899);}
-.mcard.g::before{background:linear-gradient(90deg,#10b981,#06b6d4);}
-.mcard.a::before{background:linear-gradient(90deg,#f59e0b,#f97316);}
-.mcard.r::before{background:linear-gradient(90deg,#f43f5e,#f97316);}
-.mcard.c::before{background:linear-gradient(90deg,#06b6d4,#7c3aed);}
-.mlabel{color:var(--muted);font-size:.62rem;text-transform:uppercase;letter-spacing:1px;font-family:'DM Mono',monospace;}
-.mval{font-family:'Syne',sans-serif;font-size:1.7rem;font-weight:800;color:var(--text);line-height:1.1;}
-.micon{position:absolute;top:.8rem;right:.8rem;font-size:1.2rem;opacity:.2;}
-.scard{background:var(--card);border:1px solid var(--border);border-radius:13px;padding:1.2rem 1.5rem;margin-bottom:1.1rem;}
-.stitle{font-family:'Syne',sans-serif;font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;display:flex;align-items:center;gap:.4rem;margin-bottom:.85rem;}
-.stitle.b{color:#60a5fa;}.stitle.v{color:#a78bfa;}.stitle.g{color:#34d399;}.stitle.a{color:#fbbf24;}.stitle.c{color:#22d3ee;}.stitle.r{color:#fb7185;}
-.summary{background:linear-gradient(135deg,rgba(59,130,246,.05),rgba(124,58,237,.03));border:1px solid rgba(59,130,246,.13);border-radius:9px;padding:.9rem 1.2rem;font-size:.9rem;line-height:1.75;color:#b0c4dd;font-style:italic;}
-.etag{display:inline-flex;align-items:center;gap:.3rem;padding:.22rem .65rem;border-radius:6px;font-size:.75rem;font-family:'DM Mono',monospace;margin:.18rem;}
-.PER{background:rgba(124,58,237,.1);border:1px solid rgba(124,58,237,.28);color:#c4b5fd;}
-.ORG{background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.28);color:#93c5fd;}
-.LOC{background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.28);color:#6ee7b7;}
-.MISC{background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.28);color:#fcd34d;}
-.DATE{background:rgba(244,63,94,.1);border:1px solid rgba(244,63,94,.28);color:#fda4af;}
-.EDEF{background:rgba(74,90,122,.1);border:1px solid rgba(74,90,122,.28);color:#94a3b8;}
-.aitem{display:flex;align-items:flex-start;gap:.65rem;padding:.65rem .85rem;border-radius:8px;background:var(--card2);border:1px solid var(--border);margin-bottom:.35rem;}
-.anum{width:19px;height:19px;border-radius:50%;flex-shrink:0;margin-top:2px;background:linear-gradient(135deg,#3b82f6,#7c3aed);display:flex;align-items:center;justify-content:center;font-size:.62rem;font-weight:700;color:#fff;}
-.atext{font-size:.83rem;color:#c8d4e8;line-height:1.5;}
-.iitem{display:flex;justify-content:space-between;align-items:center;padding:.45rem .75rem;border-radius:7px;background:var(--card2);border:1px solid var(--border);margin-bottom:.3rem;}
-.ilabel{color:#c8d4e8;font-size:.78rem;font-family:'DM Mono',monospace;}
-.ibadge{background:rgba(59,130,246,.13);color:#93c5fd;padding:.08rem .5rem;border-radius:18px;font-size:.7rem;font-weight:600;}
-.cbar{margin-bottom:.4rem;}
-.cbar-top{display:flex;justify-content:space-between;font-size:.72rem;margin-bottom:.18rem;}
-.cbar-name{color:#c8d4e8;font-family:'DM Mono',monospace;}
-.cbar-val{color:var(--muted);}
-.cbar-track{background:var(--card2);border-radius:3px;height:4px;overflow:hidden;}
-.cbar-fill{height:100%;border-radius:3px;}
-.tbox{background:var(--card2);border:1px solid var(--border);border-radius:9px;padding:.9rem 1.2rem;font-size:.85rem;line-height:1.8;color:#c8d4e8;max-height:220px;overflow-y:auto;}
-.tbox::-webkit-scrollbar{width:3px;}
-.tbox::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
-.empty{text-align:center;padding:3rem 2rem;}
-.empty-icon{font-size:2.8rem;margin-bottom:.7rem;}
-.empty-title{font-family:'Syne',sans-serif;font-size:1rem;font-weight:700;color:#1e2d47;margin-bottom:.35rem;}
-.empty-sub{font-size:.8rem;font-family:'DM Mono',monospace;color:#172038;}
-[data-testid="stSidebar"]{background:var(--card)!important;border-right:1px solid var(--border)!important;}
-[data-testid="stSidebar"] h3{font-family:'Syne',sans-serif!important;color:#60a5fa!important;font-size:.75rem!important;text-transform:uppercase;letter-spacing:1.5px;margin-top:1.1rem;}
-.stTextArea textarea{background:var(--card2)!important;color:var(--text)!important;border:1px solid var(--border)!important;border-radius:8px!important;font-size:.86rem!important;}
-.stButton>button{background:linear-gradient(135deg,#1e3a8a,#5b21b6)!important;color:#e2e8f0!important;border:1px solid rgba(59,130,246,.18)!important;border-radius:8px!important;font-family:'Syne',sans-serif!important;font-weight:700!important;font-size:.88rem!important;width:100%!important;padding:.5rem 1.4rem!important;transition:opacity .2s!important;}
-.stButton>button:hover{opacity:.8!important;}
-.stDownloadButton>button{background:linear-gradient(135deg,#1e3a8a,#5b21b6)!important;color:#e2e8f0!important;border:1px solid rgba(59,130,246,.18)!important;border-radius:8px!important;font-family:'Syne',sans-serif!important;font-weight:600!important;}
-.stTabs [data-baseweb="tab-list"]{background:var(--card)!important;border-radius:8px!important;padding:.18rem!important;border:1px solid var(--border)!important;}
-.stTabs [data-baseweb="tab"]{color:var(--muted)!important;font-family:'Syne',sans-serif!important;font-weight:600!important;font-size:.8rem!important;}
-.stTabs [aria-selected="true"]{background:rgba(59,130,246,.13)!important;color:#93c5fd!important;border-radius:6px!important;}
-div[data-testid="stExpander"]{background:var(--card2)!important;border:1px solid var(--border)!important;border-radius:8px!important;}
-.stRadio>div{gap:.35rem!important;}
-.stCheckbox span,.stRadio span{color:var(--text)!important;font-size:.83rem!important;}
-p,li,label,[data-testid="stMarkdownContainer"] p{color:var(--text)!important;}
-.stAlert{background:var(--card2)!important;border:1px solid var(--border)!important;border-radius:8px!important;}
-[data-testid="stFileUploader"]{background:var(--card2)!important;border:1px dashed var(--border)!important;border-radius:8px!important;}
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Syne:wght@400;600;700;800&display=swap');
+
+:root {
+    --bg-primary:    #0a0b0e;
+    --bg-secondary:  #111318;
+    --bg-card:       #161922;
+    --bg-hover:      #1e2230;
+    --border:        #252a38;
+    --accent:        #4f8cff;
+    --accent-dim:    #2a4a8a;
+    --accent-glow:   rgba(79,140,255,0.15);
+    --text-primary:  #e8eaf0;
+    --text-secondary:#8b93a8;
+    --text-muted:    #505870;
+    --success:       #34d399;
+    --warning:       #fbbf24;
+    --danger:        #f87171;
+    --mono:          'JetBrains Mono', monospace;
+    --sans:          'Syne', sans-serif;
+}
+
+html, body, [class*="css"] {
+    font-family: var(--sans);
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+}
+
+.stApp { background-color: var(--bg-primary); }
+
+/* Sidebar */
+section[data-testid="stSidebar"] {
+    background-color: var(--bg-secondary) !important;
+    border-right: 1px solid var(--border);
+}
+section[data-testid="stSidebar"] .stMarkdown,
+section[data-testid="stSidebar"] label,
+section[data-testid="stSidebar"] .stRadio label { color: var(--text-primary) !important; }
+
+/* Inputs */
+.stTextArea textarea, .stTextInput input {
+    background-color: var(--bg-card) !important;
+    color: var(--text-primary) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 6px !important;
+    font-family: var(--mono) !important;
+    font-size: 13px !important;
+}
+.stTextArea textarea:focus, .stTextInput input:focus {
+    border-color: var(--accent) !important;
+    box-shadow: 0 0 0 2px var(--accent-glow) !important;
+}
+
+/* Buttons */
+.stButton > button {
+    background-color: var(--accent) !important;
+    color: #fff !important;
+    border: none !important;
+    border-radius: 6px !important;
+    font-family: var(--sans) !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.03em !important;
+    padding: 0.5rem 1.5rem !important;
+    transition: all 0.2s ease !important;
+}
+.stButton > button:hover {
+    background-color: #3a74e8 !important;
+    box-shadow: 0 4px 20px var(--accent-glow) !important;
+    transform: translateY(-1px) !important;
+}
+
+/* Download button */
+.stDownloadButton > button {
+    background-color: transparent !important;
+    color: var(--accent) !important;
+    border: 1px solid var(--accent) !important;
+    border-radius: 6px !important;
+    font-family: var(--sans) !important;
+    font-weight: 600 !important;
+}
+.stDownloadButton > button:hover {
+    background-color: var(--accent-glow) !important;
+}
+
+/* Tabs */
+.stTabs [data-baseweb="tab-list"] {
+    background-color: var(--bg-secondary) !important;
+    border-bottom: 1px solid var(--border) !important;
+    gap: 0 !important;
+}
+.stTabs [data-baseweb="tab"] {
+    background-color: transparent !important;
+    color: var(--text-secondary) !important;
+    border-radius: 0 !important;
+    font-family: var(--sans) !important;
+    font-weight: 600 !important;
+    font-size: 13px !important;
+    letter-spacing: 0.04em !important;
+    padding: 0.75rem 1.25rem !important;
+    border-bottom: 2px solid transparent !important;
+}
+.stTabs [aria-selected="true"] {
+    color: var(--accent) !important;
+    border-bottom: 2px solid var(--accent) !important;
+    background-color: var(--accent-glow) !important;
+}
+
+/* Dataframe */
+.stDataFrame { border-radius: 8px; overflow: hidden; }
+.stDataFrame iframe { background-color: var(--bg-card) !important; }
+
+/* Metrics */
+[data-testid="metric-container"] {
+    background-color: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem;
+}
+[data-testid="metric-container"] label { color: var(--text-secondary) !important; font-size: 12px !important; }
+[data-testid="metric-container"] [data-testid="stMetricValue"] { color: var(--accent) !important; }
+
+/* Selectbox */
+.stSelectbox > div > div {
+    background-color: var(--bg-card) !important;
+    color: var(--text-primary) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 6px !important;
+}
+
+/* Slider */
+.stSlider [data-baseweb="slider"] { background-color: var(--border) !important; }
+
+/* Expander */
+details { background-color: var(--bg-card) !important; border: 1px solid var(--border) !important; border-radius: 8px !important; }
+summary { color: var(--text-primary) !important; font-weight: 600 !important; }
+
+/* File uploader */
+[data-testid="stFileUploader"] {
+    background-color: var(--bg-card) !important;
+    border: 1px dashed var(--border) !important;
+    border-radius: 8px !important;
+}
+
+/* Info / Success / Warning boxes */
+.stAlert { border-radius: 8px !important; border: none !important; }
+[data-baseweb="notification"] { background-color: var(--bg-card) !important; }
+
+/* Custom card */
+.nlp-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1rem;
+}
+.nlp-card-accent { border-left: 3px solid var(--accent); }
+
+/* Header */
+.page-header {
+    font-family: var(--sans);
+    font-size: 2rem;
+    font-weight: 800;
+    color: var(--text-primary);
+    letter-spacing: -0.02em;
+    margin-bottom: 0.25rem;
+}
+.page-subheader {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 1.5rem;
+}
+
+/* Entity highlight */
+.entity-tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-family: var(--mono);
+    font-weight: 600;
+    margin: 2px;
+}
+.entity-PER { background: rgba(79,140,255,0.2); color: #4f8cff; border: 1px solid rgba(79,140,255,0.4); }
+.entity-ORG { background: rgba(52,211,153,0.2); color: #34d399; border: 1px solid rgba(52,211,153,0.4); }
+.entity-LOC { background: rgba(251,191,36,0.2); color: #fbbf24; border: 1px solid rgba(251,191,36,0.4); }
+.entity-MISC { background: rgba(248,113,113,0.2); color: #f87171; border: 1px solid rgba(248,113,113,0.4); }
+
+/* Progress bar override */
+.stProgress > div > div > div { background-color: var(--accent) !important; }
+
+/* Timing badge */
+.timing-badge {
+    display: inline-block;
+    background: var(--bg-hover);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 4px;
+}
+.confidence-bar-container { width: 100%; background: var(--border); border-radius: 4px; height: 6px; margin: 4px 0; }
+.confidence-bar { height: 6px; border-radius: 4px; background: var(--accent); }
+
+/* Scrollable output */
+.output-block {
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1rem;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-secondary);
+    max-height: 300px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+/* Divider */
+hr { border-color: var(--border) !important; margin: 1.5rem 0 !important; }
+
+/* Sidebar nav */
+.nav-item {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin: 2px 0;
+}
+.nav-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+.nav-item.active { background: var(--accent-glow); color: var(--accent); border-left: 2px solid var(--accent); }
+
+/* Device badge */
+.device-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-family: var(--mono);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+.device-gpu { background: rgba(52,211,153,0.15); color: var(--success); border: 1px solid rgba(52,211,153,0.3); }
+.device-cpu { background: rgba(251,191,36,0.15); color: var(--warning); border: 1px solid rgba(251,191,36,0.3); }
 </style>
 """, unsafe_allow_html=True)
 
+# ─── DEVICE DETECTION ─────────────────────────────────────────────────────────
+@st.cache_resource
+def get_device():
+    import torch
+    return "cuda" if torch.cuda.is_available() else "cpu"
 
+DEVICE = get_device()
+
+# ─── SESSION STATE DEFAULTS ───────────────────────────────────────────────────
+defaults = {
+    "transcript": "",
+    "ner_results": [],
+    "summary": "",
+    "intents": [],
+    "actions": [],
+    "embeddings": [],
+    "embed_labels": [],
+    "retrieval_results": [],
+    "similarity_score": None,
+}
+for k, v in defaults.items():
+    if k not in st.session_state:
+        st.session_state[k] = v
+
+# ─── LAZY MODEL LOADERS ───────────────────────────────────────────────────────
 @st.cache_resource(show_spinner=False)
-def load_models():
-    # Explicit imports only — avoids torchvision-dependent sub-modules
-    from transformers.models.whisper.processing_whisper import WhisperProcessor
-    from transformers.models.whisper.modeling_whisper import WhisperForConditionalGeneration
-    from transformers.models.bart.tokenization_bart_fast import BartTokenizerFast
-    from transformers.models.bart.modeling_bart import BartForConditionalGeneration
-    from transformers.models.t5.tokenization_t5_fast import T5TokenizerFast
-    from transformers.models.t5.modeling_t5 import T5ForConditionalGeneration
-    from transformers.models.bert.tokenization_bert_fast import BertTokenizerFast
-    from transformers.models.bert.modeling_bert import BertForTokenClassification
-    from transformers.pipelines import pipeline as hf_pipeline
-    from transformers.pipelines.zero_shot_classification import ZeroShotClassificationPipeline
-    from sentence_transformers import SentenceTransformer
-
-    dev = 0 if torch.cuda.is_available() else -1
-    M = {}
-
-    # 1. STT — Whisper-base
-    proc  = WhisperProcessor.from_pretrained("openai/whisper-base")
-    wmdl  = WhisperForConditionalGeneration.from_pretrained("openai/whisper-base")
-    M["stt"] = hf_pipeline(
+def load_whisper():
+    from transformers import pipeline
+    return pipeline(
         "automatic-speech-recognition",
-        model=wmdl, tokenizer=proc.tokenizer,
-        feature_extractor=proc.feature_extractor,
-        max_new_tokens=256, chunk_length_s=30, device=dev,
+        model="openai/whisper-small",
+        device=0 if DEVICE == "cuda" else -1,
+        return_timestamps=True,
     )
 
-    # 2. Intent — BART-large-MNLI zero-shot
-    M["intent"] = hf_pipeline("zero-shot-classification",
-                               model="facebook/bart-large-mnli", device=dev)
-    M["intent_labels"] = [
-        "task assignment", "decision made", "question asked",
-        "information sharing", "follow-up required", "blocker reported",
-        "approval requested", "status update",
-    ]
+@st.cache_resource(show_spinner=False)
+def load_intent_classifier():
+    from transformers import pipeline
+    return pipeline(
+        "zero-shot-classification",
+        model="facebook/bart-large-mnli",
+        device=0 if DEVICE == "cuda" else -1,
+    )
 
-    # 3. NER — BERT CoNLL03
-    M["ner"] = hf_pipeline("token-classification",
-                            model="dbmdz/bert-large-cased-finetuned-conll03-english",
-                            aggregation_strategy="simple", device=dev)
+@st.cache_resource(show_spinner=False)
+def load_ner():
+    from transformers import pipeline
+    return pipeline(
+        "ner",
+        model="dslim/bert-base-NER",
+        aggregation_strategy="simple",
+        device=0 if DEVICE == "cuda" else -1,
+    )
 
-    # 4. Summarizer — BART-large-CNN (direct generate)
-    M["summ_tok"] = BartTokenizerFast.from_pretrained("facebook/bart-large-cnn")
-    M["summ_mdl"] = BartForConditionalGeneration.from_pretrained("facebook/bart-large-cnn").eval()
-    if dev == 0: M["summ_mdl"] = M["summ_mdl"].cuda()
+@st.cache_resource(show_spinner=False)
+def load_summarizer():
+    from transformers import pipeline
+    return pipeline(
+        "summarization",
+        model="facebook/bart-large-cnn",
+        device=0 if DEVICE == "cuda" else -1,
+    )
 
-    # 5. Actions — Flan-T5-base (direct generate)
-    M["act_tok"] = T5TokenizerFast.from_pretrained("google/flan-t5-base")
-    M["act_mdl"] = T5ForConditionalGeneration.from_pretrained("google/flan-t5-base").eval()
-    if dev == 0: M["act_mdl"] = M["act_mdl"].cuda()
+@st.cache_resource(show_spinner=False)
+def load_flan():
+    from transformers import pipeline
+    return pipeline(
+        "text2text-generation",
+        model="google/flan-t5-base",
+        device=0 if DEVICE == "cuda" else -1,
+    )
 
-    # 6. Embeddings — MiniLM
-    M["emb"] = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+@st.cache_resource(show_spinner=False)
+def load_embedder():
+    from sentence_transformers import SentenceTransformer
+    return SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
 
-    return M
+# ─── HELPERS ──────────────────────────────────────────────────────────────────
+def timing(fn, *args, **kwargs):
+    t0 = time.time()
+    result = fn(*args, **kwargs)
+    return result, round(time.time() - t0, 2)
 
+def render_header(title, subtitle):
+    st.markdown(f'<div class="page-header">{title}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="page-subheader">{subtitle}</div>', unsafe_allow_html=True)
 
-def transcribe(audio_bytes, stt):
-    import soundfile as sf
-    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-        f.write(audio_bytes)
-        p = f.name
-    try:
-        arr, sr = sf.read(p)
-        return stt({"array": arr.astype(np.float32), "sampling_rate": sr})["text"].strip()
-    finally:
-        os.unlink(p)
+def card(content_fn, accent=True):
+    cls = "nlp-card nlp-card-accent" if accent else "nlp-card"
+    st.markdown(f'<div class="{cls}">', unsafe_allow_html=True)
+    content_fn()
+    st.markdown('</div>', unsafe_allow_html=True)
 
+def json_download(data, filename):
+    blob = json.dumps(data, indent=2, ensure_ascii=False)
+    st.download_button(
+        "Download JSON",
+        data=blob,
+        file_name=filename,
+        mime="application/json",
+    )
 
-def run_intent(sents, pipe, labels, n):
-    out = []
-    for s in sents[:n]:
-        r = pipe(s, candidate_labels=labels, truncation=True)
-        out.append({"sentence": s, "intent": r["labels"][0], "confidence": round(r["scores"][0], 4)})
-    return out
-
-
-def run_ner(sents, pipe, n):
-    out = []
-    for s in sents[:n]:
-        for e in pipe(s):
-            out.append({"entity": e["entity_group"], "word": e["word"],
-                        "score": round(e["score"], 4), "sentence": s[:80]})
-    return out
-
-
-def run_summarize(text, tok, mdl):
-    inp = tok(text[:1024], return_tensors="pt", truncation=True, max_length=512)
-    if next(mdl.parameters()).is_cuda:
-        inp = {k: v.cuda() for k, v in inp.items()}
-    with torch.no_grad():
-        ids = mdl.generate(**inp, max_new_tokens=130, min_new_tokens=30, num_beams=4, early_stopping=True)
-    return tok.decode(ids[0], skip_special_tokens=True)
-
-
-def run_actions(text, tok, mdl):
-    prompt = f"Extract action items from this meeting. List each on a new line with owner and deadline.\n\nTranscript:\n{text[:700]}\n\nAction Items:"
-    inp = tok(prompt, return_tensors="pt", truncation=True, max_length=512)
-    if next(mdl.parameters()).is_cuda:
-        inp = {k: v.cuda() for k, v in inp.items()}
-    with torch.no_grad():
-        ids = mdl.generate(**inp, max_new_tokens=200)
-    raw = tok.decode(ids[0], skip_special_tokens=True)
-    return [l.strip().lstrip("-•*0123456789. ") for l in raw.split("\n") if len(l.strip()) > 8][:10]
-
-
-def run_embeddings(sents, mdl):
-    if not sents:
-        return np.array([])
-    return mdl.encode(sents[:10], normalize_embeddings=True)
-
-
-def cbar(label, val, color="#3b82f6"):
-    p = int(val * 100)
-    return (f'<div class="cbar"><div class="cbar-top">'
-            f'<span class="cbar-name">{label}</span><span class="cbar-val">{p}%</span></div>'
-            f'<div class="cbar-track"><div class="cbar-fill" style="width:{p}%;'
-            f'background:linear-gradient(90deg,{color},#7c3aed);"></div></div></div>')
-
-
-SAMPLE = """Alice: Good morning everyone. Let's start the weekly product sync.
-John, can you give us the engineering update?
-John: Sure. We completed the user authentication module this week.
-The database migration to PostgreSQL is 90% done — we expect to finish by Thursday.
-Sarah: Great news. On the design side, we finalized the new dashboard mockups.
-I'll share them with the team by end of day.
-Alice: What about the security audit?
-John: Mike is leading that. Mike, any update?
-Mike: Yes, we found three medium-priority vulnerabilities. I'll send a detailed report to all stakeholders by tomorrow morning.
-Alice: We need to schedule a follow-up with the security team next week. Sarah, can you set that up?
-Sarah: Absolutely. I'll send the calendar invite today.
-Alice: One more thing — we need to finalize the Q4 budget proposal. John, coordinate with finance before the board meeting on December 5th.
-John: Got it. I'll set up a meeting with the CFO this week.
-Alice: Great. Any blockers?
-Mike: No blockers from my side.
-Sarah: Same here.
-Alice: Perfect. Thanks everyone."""
-
-
-def main():
-    st.markdown("""<div class="hero">
-        <h1 class="hero-title">🎙️ NLU Meeting Intelligence</h1>
-        <p class="hero-sub">Audio → Transcript → Intent · NER · Summary · Actions · Embeddings</p>
-        <div class="pills">
-            <span class="pill">🎙️ Whisper STT</span>
-            <span class="pill">🎯 BART Zero-Shot Intent</span>
-            <span class="pill">🏷️ BERT NER</span>
-            <span class="pill">📋 BART Summary</span>
-            <span class="pill">✅ Flan-T5 Actions</span>
-            <span class="pill">🔗 MiniLM Embeddings</span>
-        </div></div>""", unsafe_allow_html=True)
-
-    st.markdown("""<div class="pipe">
-        <div class="pipe-step"><div class="pipe-icon">🎙️</div><div class="pipe-name">Whisper</div><div class="pipe-sub">STT</div></div>
-        <span class="pipe-arr">→</span>
-        <div class="pipe-step"><div class="pipe-icon">🎯</div><div class="pipe-name">BART</div><div class="pipe-sub">Intent</div></div>
-        <span class="pipe-arr">→</span>
-        <div class="pipe-step"><div class="pipe-icon">🏷️</div><div class="pipe-name">BERT</div><div class="pipe-sub">NER</div></div>
-        <span class="pipe-arr">→</span>
-        <div class="pipe-step"><div class="pipe-icon">📋</div><div class="pipe-name">BART</div><div class="pipe-sub">Summary</div></div>
-        <span class="pipe-arr">→</span>
-        <div class="pipe-step"><div class="pipe-icon">✅</div><div class="pipe-name">Flan-T5</div><div class="pipe-sub">Actions</div></div>
-        <span class="pipe-arr">→</span>
-        <div class="pipe-step"><div class="pipe-icon">🔗</div><div class="pipe-name">MiniLM</div><div class="pipe-sub">Embeddings</div></div>
-    </div>""", unsafe_allow_html=True)
-
-    with st.sidebar:
-        st.markdown("### ⚙️ Input Mode")
-        mode = st.radio("Mode", ["📝 Text", "🎵 Audio"], label_visibility="collapsed")
-        st.markdown("### 🔧 Settings")
-        max_ic  = st.slider("Intent sentences",  5, 20, 12)
-        max_ner = st.slider("NER sentences",      5, 15, 10)
-        st.markdown("### 📊 Display")
-        show_sim    = st.checkbox("Similarity pairs",  True)
-        show_timing = st.checkbox("Processing times",  True)
-        show_json   = st.checkbox("Raw JSON",          False)
-        st.markdown("---")
-        st.markdown('<div style="color:#1a2a40;font-size:.68rem;font-family:\'DM Mono\',monospace;line-height:2;">openai/whisper-base<br>facebook/bart-large-mnli<br>dbmdz/bert-cased-conll03<br>facebook/bart-large-cnn<br>google/flan-t5-base<br>all-MiniLM-L6-v2</div>', unsafe_allow_html=True)
-
-    transcript = ""
-    audio_bytes = None
-
-    if "📝 Text" in mode:
-        transcript = st.text_area("", value=SAMPLE, height=175, label_visibility="collapsed")
-        c1, c2 = st.columns(2)
-        with c1: sample_btn = st.button("📋 Load Sample")
-        with c2: run_btn    = st.button("🚀 Analyze Meeting")
-        if sample_btn: transcript = SAMPLE
+def device_badge():
+    if DEVICE == "cuda":
+        st.markdown('<span class="device-badge device-gpu">GPU Active</span>', unsafe_allow_html=True)
     else:
-        af = st.file_uploader("Upload audio (WAV / MP3 / M4A / OGG)",
-                               type=["wav","mp3","m4a","ogg"], label_visibility="collapsed")
-        run_btn    = st.button("🎙️ Transcribe & Analyze")
-        sample_btn = False
-        if af: audio_bytes = af.read()
+        st.markdown('<span class="device-badge device-cpu">CPU Mode</span>', unsafe_allow_html=True)
 
-    if run_btn and (transcript.strip() or audio_bytes):
-        with st.spinner("Loading models — first run takes a few minutes…"):
-            try:
-                M = load_models()
-            except Exception as e:
-                st.error(f"Model load failed: {e}"); st.stop()
+def confidence_bar(score, label=""):
+    pct = int(score * 100)
+    st.markdown(
+        f"""<div style="margin:4px 0">
+        <span style="font-family:var(--mono);font-size:11px;color:var(--text-secondary)">{label}</span>
+        <div class="confidence-bar-container">
+          <div class="confidence-bar" style="width:{pct}%"></div>
+        </div>
+        <span style="font-family:var(--mono);font-size:11px;color:var(--text-muted)">{pct}%</span>
+        </div>""",
+        unsafe_allow_html=True,
+    )
 
-        if audio_bytes:
-            with st.spinner("Transcribing audio…"):
-                try:
-                    transcript = transcribe(audio_bytes, M["stt"])
-                except Exception as e:
-                    st.error(f"Transcription failed: {e}"); st.stop()
+# ─── SIDEBAR ──────────────────────────────────────────────────────────────────
+PAGES = {
+    "Whisper STT": ["Audio Transcription", "Language Detection", "Transcript Export"],
+    "Intent Classification": ["Intent Prediction", "Multi-Intent Ranking", "Custom Labels"],
+    "Named Entity Recognition": ["Entity Extraction", "Entity Highlighting", "Entity Export"],
+    "Summarization": ["Long Text Summary", "Meeting Summary", "Summary Analytics"],
+    "Action Extraction": ["Action Items", "Instruction to Task", "Workflow Generation"],
+    "Semantic Embeddings": ["Semantic Similarity", "Semantic Retrieval", "Embedding Visualization"],
+}
 
-        if not transcript.strip():
-            st.warning("Nothing to analyze."); st.stop()
+with st.sidebar:
+    st.markdown("""
+    <div style="padding:1.25rem 0.5rem 0.75rem">
+      <div style="font-family:var(--sans);font-size:1.2rem;font-weight:800;color:var(--text-primary);letter-spacing:-0.02em">
+        NLU Suite
+      </div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--text-muted);letter-spacing:0.1em;text-transform:uppercase;margin-top:2px">
+        Intelligence Platform
+      </div>
+    </div>
+    <hr style="margin:0.5rem 0 1rem 0">
+    """, unsafe_allow_html=True)
 
-        sents = [s.strip() for s in re.split(r"(?<=[.!?])\s+", transcript) if len(s.strip()) > 5]
-        R   = {"transcript": transcript, "sentences": sents, "timing": {}}
-        bar = st.progress(0, text="Running pipeline…")
+    device_badge()
+    st.markdown("<br>", unsafe_allow_html=True)
 
-        t = time.time(); R["intents"]  = run_intent(sents, M["intent"], M["intent_labels"], max_ic);  R["timing"]["Intent"]     = round(time.time()-t, 2); bar.progress(20)
-        t = time.time(); R["entities"] = run_ner(sents, M["ner"], max_ner);                            R["timing"]["NER"]        = round(time.time()-t, 2); bar.progress(40)
-        t = time.time(); R["summary"]  = run_summarize(transcript, M["summ_tok"], M["summ_mdl"]);      R["timing"]["Summary"]    = round(time.time()-t, 2); bar.progress(60)
-        t = time.time(); R["actions"]  = run_actions(transcript, M["act_tok"], M["act_mdl"]);          R["timing"]["Actions"]    = round(time.time()-t, 2); bar.progress(80)
-        t = time.time()
-        emb = run_embeddings(sents, M["emb"])
-        R["embeddings"] = emb
-        R["similarity"] = (emb @ emb.T) if len(emb) > 1 else np.array([])
-        R["timing"]["Embeddings"] = round(time.time()-t, 2); bar.progress(100)
-        time.sleep(.15); bar.empty()
-        st.session_state["R"] = R
+    selected_section = st.radio(
+        "Module",
+        list(PAGES.keys()),
+        label_visibility="collapsed",
+    )
 
-    if "R" not in st.session_state:
-        st.markdown('<div class="empty"><div class="empty-icon">🎙️</div><div class="empty-title">Ready to Analyze</div><div class="empty-sub">Paste a transcript or upload audio · then click Analyze</div></div>', unsafe_allow_html=True)
-        return
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown(
+        '<div style="font-family:var(--mono);font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em">Models</div>',
+        unsafe_allow_html=True,
+    )
+    model_info = [
+        ("Whisper", "openai/whisper-small"),
+        ("Intent", "bart-large-mnli"),
+        ("NER", "bert-base-NER"),
+        ("Summary", "bart-large-cnn"),
+        ("Action", "flan-t5-base"),
+        ("Embed", "all-MiniLM-L6-v2"),
+    ]
+    for short, full in model_info:
+        st.markdown(
+            f'<div style="font-family:var(--mono);font-size:11px;color:var(--text-secondary);padding:2px 0">'
+            f'<span style="color:var(--accent)">{short}</span> {full}</div>',
+            unsafe_allow_html=True,
+        )
 
-    R     = st.session_state["R"]
-    sents = R["sentences"]
-    n_w   = len(R["transcript"].split())
-    n_i   = len(set(x["intent"] for x in R["intents"]))
-    n_e   = len(R["entities"])
-    n_a   = len(R["actions"])
-    n_s   = len(sents)
-    n_d   = R["embeddings"].shape[1] if len(R["embeddings"]) > 0 else 0
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.caption(f"Session started {datetime.now().strftime('%H:%M')}")
 
-    st.markdown(f"""<div class="mgrid">
-        <div class="mcard b"><div class="micon">💬</div><div class="mlabel">Words</div><div class="mval">{n_w:,}</div></div>
-        <div class="mcard v"><div class="micon">🎯</div><div class="mlabel">Intents</div><div class="mval">{n_i}</div></div>
-        <div class="mcard g"><div class="micon">🏷️</div><div class="mlabel">Entities</div><div class="mval">{n_e}</div></div>
-        <div class="mcard a"><div class="micon">✅</div><div class="mlabel">Actions</div><div class="mval">{n_a}</div></div>
-        <div class="mcard r"><div class="micon">📝</div><div class="mlabel">Sentences</div><div class="mval">{n_s}</div></div>
-        <div class="mcard c"><div class="micon">🔢</div><div class="mlabel">Embed Dims</div><div class="mval">{n_d}</div></div>
-    </div>""", unsafe_allow_html=True)
+# ─── WHISPER STT ──────────────────────────────────────────────────────────────
+if selected_section == "Whisper STT":
+    render_header("Speech Recognition", "Whisper STT — openai/whisper-small")
 
-    t1, t2, t3, t4, t5, t6 = st.tabs(["📋 Summary", "🎯 Intents", "🏷️ Entities", "✅ Actions", "🔗 Embeddings", "📄 Transcript"])
+    tabs = st.tabs(["Audio Transcription", "Language Detection", "Transcript Export"])
 
-    with t1:
-        st.markdown('<div class="scard"><div class="stitle b">📋 Meeting Summary</div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="summary">{R.get("summary","—")}</div></div>', unsafe_allow_html=True)
-        if show_timing:
-            st.markdown('<div class="scard"><div class="stitle c">⏱️ Processing Times</div>', unsafe_allow_html=True)
-            total = sum(R["timing"].values())
-            for k, v in R["timing"].items():
-                st.markdown(cbar(f"{k} ({v}s)", v / max(total, .001)), unsafe_allow_html=True)
-            st.markdown(f'<p style="color:var(--muted);font-size:.72rem;font-family:\'DM Mono\',monospace;margin-top:.3rem;">Total: {total:.2f}s</p></div>', unsafe_allow_html=True)
+    # TAB 1: Audio Transcription
+    with tabs[0]:
+        st.markdown("#### Upload Audio File")
+        audio_file = st.file_uploader("Supported: mp3, wav, m4a, ogg, flac", type=["mp3", "wav", "m4a", "ogg", "flac"], key="asr_upload")
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            task_type = st.selectbox("Task", ["transcribe", "translate"], key="asr_task")
+        with col2:
+            st.markdown("<br>", unsafe_allow_html=True)
+            run_asr = st.button("Transcribe", key="run_asr")
 
-    with t2:
-        st.markdown('<div class="scard"><div class="stitle v">🎯 Intent Distribution</div>', unsafe_allow_html=True)
-        intents = R.get("intents", [])
-        if intents:
-            counts = Counter(x["intent"] for x in intents)
-            tot = len(intents)
-            for lbl, cnt in counts.most_common():
-                st.markdown(f'<div class="iitem"><span class="ilabel">{lbl}</span><span class="ibadge">{cnt}/{tot}</span></div>', unsafe_allow_html=True)
-                st.markdown(cbar(lbl, cnt / tot, "#7c3aed"), unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
-        with st.expander("Per-sentence details"):
-            for x in intents[:15]:
-                c = "#10b981" if x["confidence"] > .8 else "#f59e0b" if x["confidence"] > .6 else "#f43f5e"
-                st.markdown(f'<div style="padding:.4rem .75rem;border-left:3px solid {c};margin-bottom:.3rem;background:var(--card2);border-radius:0 6px 6px 0;"><div style="font-size:.7rem;color:var(--muted);font-family:\'DM Mono\',monospace;">{x["intent"]} · {int(x["confidence"]*100)}%</div><div style="font-size:.82rem;color:#c8d4e8;">{x["sentence"][:120]}</div></div>', unsafe_allow_html=True)
+        if audio_file and run_asr:
+            with st.spinner("Loading Whisper model..."):
+                asr = load_whisper()
+            audio_bytes = audio_file.read()
+            tmp_path = f"/tmp/upload_{int(time.time())}.wav"
+            with open(tmp_path, "wb") as f:
+                f.write(audio_bytes)
+            with st.spinner("Transcribing audio..."):
+                result, elapsed = timing(asr, tmp_path, generate_kwargs={"task": task_type})
+            transcript = result["text"]
+            st.session_state["transcript"] = transcript
+            st.session_state["chunks"] = result.get("chunks", [])
+            st.success(f"Transcription complete in {elapsed}s")
+            st.audio(audio_bytes)
+            st.markdown("**Transcript**")
+            st.markdown(f'<div class="output-block">{transcript}</div>', unsafe_allow_html=True)
 
-    with t3:
-        st.markdown('<div class="scard"><div class="stitle g">🏷️ Named Entities</div>', unsafe_allow_html=True)
-        ents = R.get("entities", [])
-        if ents:
-            groups = {}
-            for e in ents:
-                groups.setdefault(e["entity"], []).append(e)
-            for etype, lst in sorted(groups.items()):
-                cls  = etype if etype in ["PER","ORG","LOC","MISC","DATE"] else "EDEF"
-                tags = "".join(f'<span class="etag {cls}"><b>{etype}</b> {e["word"]} <small>({e["score"]:.2f})</small></span>' for e in lst[:12])
-                st.markdown(f'<div style="margin-bottom:.8rem;"><div style="font-size:.65rem;color:var(--muted);font-family:\'DM Mono\',monospace;text-transform:uppercase;letter-spacing:1px;margin-bottom:.25rem;">{etype} ({len(lst)})</div>{tags}</div>', unsafe_allow_html=True)
+        elif st.session_state["transcript"]:
+            st.info("Showing previous transcript")
+            st.markdown(f'<div class="output-block">{st.session_state["transcript"]}</div>', unsafe_allow_html=True)
         else:
-            st.info("No entities detected.")
-        st.markdown("</div>", unsafe_allow_html=True)
+            st.info("Upload an audio file and click Transcribe to begin.")
 
-    with t4:
-        st.markdown('<div class="scard"><div class="stitle a">✅ Action Items</div>', unsafe_allow_html=True)
-        actions = R.get("actions", [])
-        if actions:
-            for i, a in enumerate(actions, 1):
-                st.markdown(f'<div class="aitem"><div class="anum">{i}</div><div class="atext">{a}</div></div>', unsafe_allow_html=True)
-            st.download_button("⬇️ Export Actions", "\n".join(f"{i}. {a}" for i, a in enumerate(actions, 1)), "action_items.txt", "text/plain")
+    # TAB 2: Language Detection
+    with tabs[1]:
+        render_header("Language Detection", "Auto-detect spoken language from audio")
+        audio_file2 = st.file_uploader("Upload audio for language detection", type=["mp3", "wav", "m4a", "ogg", "flac"], key="lang_upload")
+        if audio_file2 and st.button("Detect Language"):
+            with st.spinner("Loading Whisper..."):
+                asr = load_whisper()
+            audio_bytes2 = audio_file2.read()
+            tmp2 = f"/tmp/lang_{int(time.time())}.wav"
+            with open(tmp2, "wb") as f:
+                f.write(audio_bytes2)
+            with st.spinner("Detecting language..."):
+                import torch
+                import librosa
+                audio_np, sr = librosa.load(tmp2, sr=16000, mono=True, duration=30)
+                processor = asr.feature_extractor
+                inputs = processor(audio_np, return_tensors="pt", sampling_rate=16000)
+                model = asr.model
+                with torch.no_grad():
+                    predicted_ids = model.generate(
+                        inputs["input_features"].to(model.device),
+                        task="transcribe",
+                        return_timestamps=False,
+                    )
+                lang_token = asr.tokenizer.decode(predicted_ids[0][:3])
+
+            cols = st.columns(3)
+            cols[0].metric("Detected Language Token", lang_token[:20])
+            cols[1].metric("Audio Duration", f"{round(len(audio_np)/sr, 1)}s")
+            cols[2].metric("Sample Rate", f"{sr} Hz")
+            st.markdown("**Note:** Whisper detects language automatically; use `translate` task to convert non-English to English.")
+
+        elif st.session_state["transcript"]:
+            st.info("Language detection uses a freshly uploaded audio file.")
         else:
-            st.info("No action items found.")
-        st.markdown("</div>", unsafe_allow_html=True)
+            st.info("Upload audio to detect the spoken language.")
 
-    with t5:
-        st.markdown('<div class="scard"><div class="stitle c">🔗 Sentence Embeddings</div>', unsafe_allow_html=True)
-        emb = R.get("embeddings", np.array([]))
-        if len(emb) > 0:
-            sh = emb.shape
-            st.markdown(f"""<div style="display:flex;gap:.7rem;flex-wrap:wrap;margin-bottom:.9rem;">
-            <div style="background:rgba(6,182,212,.07);border:1px solid rgba(6,182,212,.18);border-radius:7px;padding:.45rem .9rem;"><div style="color:var(--muted);font-size:.62rem;font-family:'DM Mono',monospace;">SENTENCES</div><div style="color:#22d3ee;font-family:'Syne',sans-serif;font-size:1.3rem;font-weight:800;">{sh[0]}</div></div>
-            <div style="background:rgba(124,58,237,.07);border:1px solid rgba(124,58,237,.18);border-radius:7px;padding:.45rem .9rem;"><div style="color:var(--muted);font-size:.62rem;font-family:'DM Mono',monospace;">DIMENSIONS</div><div style="color:#a78bfa;font-family:'Syne',sans-serif;font-size:1.3rem;font-weight:800;">{sh[1]}</div></div>
-            <div style="background:rgba(16,185,129,.07);border:1px solid rgba(16,185,129,.18);border-radius:7px;padding:.45rem .9rem;"><div style="color:var(--muted);font-size:.62rem;font-family:'DM Mono',monospace;">TOTAL VALUES</div><div style="color:#34d399;font-family:'Syne',sans-serif;font-size:1.3rem;font-weight:800;">{sh[0]*sh[1]:,}</div></div>
-            </div>""", unsafe_allow_html=True)
-            prev = emb[:min(5, sh[0]), :20]; vmin, vmax = prev.min(), prev.max()
-            cells = ""
-            for row in prev:
-                for val in row:
-                    n = (val - vmin) / max(vmax - vmin, 1e-8)
-                    bg = f"rgba(59,{int(130+n*52)},{int(246-n*34)},{.08+n*.2})"
-                    cells += f'<div style="height:28px;border-radius:3px;background:{bg};display:flex;align-items:center;justify-content:center;font-size:.58rem;font-family:\'DM Mono\',monospace;color:rgba(255,255,255,.3);">{val:.2f}</div>'
-            st.markdown(f'<div style="display:grid;grid-template-columns:repeat(20,1fr);gap:2px;">{cells}</div>', unsafe_allow_html=True)
-            if show_sim and len(emb) > 1:
-                sim = R.get("similarity", np.array([]))
-                if len(sim) > 1:
-                    st.markdown('<div class="stitle c" style="margin-top:1rem;font-size:.73rem;">🔁 Top Similar Pairs</div>', unsafe_allow_html=True)
-                    n2    = min(len(sents), len(sim))
-                    pairs = sorted([(sim[i,j],i,j) for i in range(n2) for j in range(i+1,n2)], reverse=True)
-                    for score, i, j in pairs[:4]:
-                        col = "#10b981" if score > .8 else "#f59e0b" if score > .6 else "#64748b"
-                        s1  = sents[i][:65] + "…" if len(sents[i]) > 65 else sents[i]
-                        s2  = sents[j][:65] + "…" if len(sents[j]) > 65 else sents[j]
-                        st.markdown(f'<div style="padding:.6rem .85rem;background:var(--card2);border:1px solid var(--border);border-radius:8px;margin-bottom:.35rem;"><div style="display:flex;justify-content:space-between;margin-bottom:.3rem;"><span style="color:var(--muted);font-size:.65rem;font-family:\'DM Mono\',monospace;">COSINE SIMILARITY</span><span style="color:{col};font-family:\'Syne\',sans-serif;font-size:.92rem;font-weight:800;">{score:.3f}</span></div><div style="font-size:.78rem;color:#94a3b8;">"{s1}"</div><div style="font-size:.7rem;color:var(--muted);margin:.18rem 0;">↔</div><div style="font-size:.78rem;color:#94a3b8;">"{s2}"</div></div>', unsafe_allow_html=True)
+    # TAB 3: Transcript Export
+    with tabs[2]:
+        render_header("Transcript Export", "Download and format transcripts")
+        if st.session_state["transcript"]:
+            txt = st.session_state["transcript"]
+            chunks = st.session_state.get("chunks", [])
+
+            st.markdown("**Formatted Transcript**")
+            st.text_area("Full text", txt, height=200, key="export_txt")
+
+            col1, col2 = st.columns(2)
+            with col1:
+                st.download_button("Download TXT", txt, file_name="transcript.txt", mime="text/plain")
+            with col2:
+                export_data = {"transcript": txt, "chunks": chunks, "timestamp": datetime.now().isoformat()}
+                json_download(export_data, "transcript.json")
+
+            if chunks:
+                st.markdown("**Timestamped Segments**")
+                rows = [{"start": c.get("timestamp", [None, None])[0], "end": c.get("timestamp", [None, None])[1], "text": c.get("text", "")} for c in chunks]
+                df = pd.DataFrame(rows)
+                st.dataframe(df, use_container_width=True)
         else:
-            st.info("No embeddings computed.")
-        st.markdown("</div>", unsafe_allow_html=True)
+            st.info("Transcribe audio in the first tab to generate an exportable transcript.")
 
-    with t6:
-        st.markdown('<div class="scard"><div class="stitle r">📄 Full Transcript</div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="tbox">{R["transcript"].replace(chr(10),"<br>")}</div></div>', unsafe_allow_html=True)
-        c1, c2 = st.columns(2)
-        with c1:
-            st.download_button("⬇️ Transcript TXT", R["transcript"], "transcript.txt", "text/plain")
-        with c2:
-            if show_json:
-                safe = {k: v for k, v in R.items() if k not in ["embeddings","similarity"]}
-                st.download_button("⬇️ Full JSON", json.dumps(safe, indent=2, ensure_ascii=False), "analysis.json", "application/json")
+# ─── INTENT CLASSIFICATION ────────────────────────────────────────────────────
+elif selected_section == "Intent Classification":
+    render_header("Intent Classification", "Zero-shot classification — facebook/bart-large-mnli")
 
-    if show_json:
-        with st.expander("Raw JSON"):
-            safe = {k: v for k, v in R.items() if k not in ["embeddings","similarity"]}
-            st.json(safe)
+    DEFAULT_LABELS = ["schedule meeting", "send email", "create task", "request update", "approve document", "cancel appointment", "provide feedback", "escalate issue"]
+    tabs = st.tabs(["Intent Prediction", "Multi-Intent Ranking", "Custom Labels"])
 
+    def get_intent_text():
+        return st.text_area("Input text", value=st.session_state.get("intent_text", ""), placeholder="Enter a sentence or paragraph...", key="intent_input", height=100)
 
-if __name__ == "__main__":
-    main()
+    with tabs[0]:
+        text = get_intent_text()
+        st.session_state["intent_text"] = text
+        if st.button("Predict Intent", key="predict_single"):
+            if text.strip():
+                with st.spinner("Loading classifier..."):
+                    clf = load_intent_classifier()
+                with st.spinner("Classifying..."):
+                    res, elapsed = timing(clf, text, candidate_labels=DEFAULT_LABELS[:4], multi_label=False)
+                st.session_state["intents"] = list(zip(res["labels"], res["scores"]))
+                st.markdown(f'<span class="timing-badge">{elapsed}s inference</span>', unsafe_allow_html=True)
+                top_label, top_score = res["labels"][0], res["scores"][0]
+                st.metric("Top Intent", top_label, f"{round(top_score*100, 1)}% confidence")
+                st.markdown("**Confidence Breakdown**")
+                for label, score in zip(res["labels"], res["scores"]):
+                    confidence_bar(score, label)
+            else:
+                st.warning("Enter text first.")
+
+    with tabs[1]:
+        text = st.text_area("Input text for multi-intent ranking", value=st.session_state.get("intent_text", ""), height=100, key="multi_intent_input")
+        top_k = st.slider("Top K intents to show", 2, 8, 5)
+        if st.button("Rank Intents", key="rank_intents"):
+            if text.strip():
+                with st.spinner("Loading classifier..."):
+                    clf = load_intent_classifier()
+                with st.spinner("Running multi-label classification..."):
+                    res, elapsed = timing(clf, text, candidate_labels=DEFAULT_LABELS, multi_label=True)
+                pairs = list(zip(res["labels"], res["scores"]))[:top_k]
+                st.markdown(f'<span class="timing-badge">{elapsed}s</span>', unsafe_allow_html=True)
+                df = pd.DataFrame(pairs, columns=["Intent", "Score"])
+                df["Score (%)"] = (df["Score"] * 100).round(1)
+                fig = px.bar(df, x="Score (%)", y="Intent", orientation="h",
+                             color="Score (%)", color_continuous_scale=["#252a38", "#4f8cff"],
+                             template="plotly_dark")
+                fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                                  font_family="JetBrains Mono", showlegend=False,
+                                  coloraxis_showscale=False, margin=dict(l=0, r=0, t=10, b=0))
+                st.plotly_chart(fig, use_container_width=True)
+                st.dataframe(df[["Intent", "Score (%)"]], use_container_width=True)
+                json_download(pairs, "intent_ranking.json")
+            else:
+                st.warning("Enter text first.")
+
+    with tabs[2]:
+        text = st.text_area("Input text", value=st.session_state.get("intent_text", ""), height=80, key="custom_label_input")
+        custom_raw = st.text_input("Custom labels (comma-separated)", value="approve budget, reject proposal, request clarification, defer decision")
+        if st.button("Classify with Custom Labels"):
+            labels = [l.strip() for l in custom_raw.split(",") if l.strip()]
+            if text.strip() and labels:
+                with st.spinner("Loading classifier..."):
+                    clf = load_intent_classifier()
+                with st.spinner("Classifying..."):
+                    res, elapsed = timing(clf, text, candidate_labels=labels, multi_label=True)
+                st.markdown(f'<span class="timing-badge">{elapsed}s</span>', unsafe_allow_html=True)
+                df = pd.DataFrame({"Label": res["labels"], "Score": [round(s, 4) for s in res["scores"]]})
+                st.dataframe(df, use_container_width=True)
+                fig = px.pie(df, names="Label", values="Score", template="plotly_dark",
+                             color_discrete_sequence=px.colors.sequential.Blues_r)
+                fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", font_family="JetBrains Mono")
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.warning("Provide text and at least one label.")
+
+# ─── NAMED ENTITY RECOGNITION ─────────────────────────────────────────────────
+elif selected_section == "Named Entity Recognition":
+    render_header("Named Entity Recognition", "Token classification — dslim/bert-base-NER")
+
+    tabs = st.tabs(["Entity Extraction", "Entity Highlighting", "Entity Export"])
+
+    sample_text = "Dr. Sarah Chen from OpenAI met with Elon Musk at Google headquarters in San Francisco to discuss the future of artificial intelligence on Monday."
+
+    with tabs[0]:
+        text = st.text_area("Input text", value=sample_text, height=120, key="ner_input")
+        if st.button("Extract Entities"):
+            if text.strip():
+                with st.spinner("Loading NER model..."):
+                    ner = load_ner()
+                with st.spinner("Extracting entities..."):
+                    results, elapsed = timing(ner, text)
+                st.session_state["ner_results"] = results
+                st.session_state["ner_text"] = text
+                st.markdown(f'<span class="timing-badge">{elapsed}s</span>', unsafe_allow_html=True)
+                if results:
+                    df = pd.DataFrame([{
+                        "Entity": r["word"],
+                        "Type": r["entity_group"],
+                        "Score": round(r["score"], 4),
+                        "Start": r["start"],
+                        "End": r["end"],
+                    } for r in results])
+                    col1, col2, col3 = st.columns(3)
+                    col1.metric("Total Entities", len(results))
+                    col2.metric("Unique Types", df["Type"].nunique())
+                    col3.metric("Avg Confidence", f"{df['Score'].mean():.1%}")
+                    st.dataframe(df, use_container_width=True)
+                    type_counts = df["Type"].value_counts().reset_index()
+                    type_counts.columns = ["Type", "Count"]
+                    fig = px.bar(type_counts, x="Type", y="Count", template="plotly_dark",
+                                 color="Count", color_continuous_scale=["#252a38", "#4f8cff"])
+                    fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                                      font_family="JetBrains Mono", showlegend=False,
+                                      coloraxis_showscale=False)
+                    st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.info("No entities found.")
+
+    with tabs[1]:
+        text2 = st.text_area("Input text for highlighting", value=sample_text, height=120, key="ner_highlight_input")
+        if st.button("Highlight Entities"):
+            if text2.strip():
+                with st.spinner("Loading NER..."):
+                    ner = load_ner()
+                with st.spinner("Processing..."):
+                    results2, _ = timing(ner, text2)
+
+                if results2:
+                    highlighted = text2
+                    for ent in sorted(results2, key=lambda x: x["start"], reverse=True):
+                        word = ent["word"]
+                        etype = ent["entity_group"]
+                        tag = f'<span class="entity-tag entity-{etype}">{word} <sup>{etype}</sup></span>'
+                        start, end = ent["start"], ent["end"]
+                        highlighted = highlighted[:start] + tag + highlighted[end:]
+
+                    st.markdown("**Highlighted Output**")
+                    st.markdown(
+                        f'<div class="nlp-card" style="line-height:2.2;font-size:14px">{highlighted}</div>',
+                        unsafe_allow_html=True,
+                    )
+                    st.markdown("""
+                    <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-top:0.5rem">
+                      <span class="entity-tag entity-PER">PER Person</span>
+                      <span class="entity-tag entity-ORG">ORG Organization</span>
+                      <span class="entity-tag entity-LOC">LOC Location</span>
+                      <span class="entity-tag entity-MISC">MISC Miscellaneous</span>
+                    </div>""", unsafe_allow_html=True)
+                else:
+                    st.info("No entities detected.")
+
+    with tabs[2]:
+        if st.session_state["ner_results"]:
+            results = st.session_state["ner_results"]
+            df = pd.DataFrame([{
+                "entity": r["word"],
+                "type": r["entity_group"],
+                "confidence": round(r["score"], 4),
+                "start": r["start"],
+                "end": r["end"],
+            } for r in results])
+            st.dataframe(df, use_container_width=True)
+            col1, col2 = st.columns(2)
+            with col1:
+                csv = df.to_csv(index=False)
+                st.download_button("Download CSV", csv, "entities.csv", "text/csv")
+            with col2:
+                json_download(results, "entities.json")
+        else:
+            st.info("Run Entity Extraction first to generate exportable data.")
+
+# ─── SUMMARIZATION ────────────────────────────────────────────────────────────
+elif selected_section == "Summarization":
+    render_header("Summarization", "Abstractive summarization — facebook/bart-large-cnn")
+
+    SAMPLE_MEETING = """The quarterly review meeting commenced at 9 AM with all department heads present. The CEO opened by acknowledging strong Q3 results with revenue up 23% year-over-year. The marketing director reported that the new campaign generated 45,000 leads with a conversion rate of 8.2%. The engineering team completed migration to the new cloud infrastructure two weeks ahead of schedule, reducing operational costs by 31%. However, the sales team flagged concerns about supply chain delays affecting product delivery timelines. HR presented the new remote work policy effective January 1st. The board unanimously approved the $12M budget for R&D expansion in AI capabilities. Action items: CFO to finalize Q4 projections by Friday, Sales VP to negotiate with logistics partners, and HR to distribute updated policy documents by end of week."""
+
+    tabs = st.tabs(["Long Text Summary", "Meeting Summary", "Summary Analytics"])
+
+    with tabs[0]:
+        text = st.text_area("Paste long text to summarize", value=SAMPLE_MEETING, height=180, key="summary_input")
+        col1, col2 = st.columns(2)
+        with col1:
+            min_len = st.slider("Min summary length", 30, 150, 50)
+        with col2:
+            max_len = st.slider("Max summary length", 100, 400, 200)
+
+        if st.button("Summarize Text"):
+            if len(text.split()) < 20:
+                st.warning("Text is too short to summarize meaningfully.")
+            else:
+                with st.spinner("Loading summarizer (BART-large-cnn)..."):
+                    summ = load_summarizer()
+                with st.spinner("Generating summary..."):
+                    res, elapsed = timing(summ, text, max_length=max_len, min_length=min_len, do_sample=False)
+                summary_text = res[0]["summary_text"]
+                st.session_state["summary"] = summary_text
+                st.session_state["original_text"] = text
+                st.markdown(f'<span class="timing-badge">{elapsed}s</span>', unsafe_allow_html=True)
+                st.markdown("**Summary**")
+                st.markdown(f'<div class="nlp-card nlp-card-accent" style="font-size:14px;line-height:1.8">{summary_text}</div>', unsafe_allow_html=True)
+                ratio = round(len(summary_text.split()) / len(text.split()) * 100, 1)
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Original Words", len(text.split()))
+                c2.metric("Summary Words", len(summary_text.split()))
+                c3.metric("Compression Ratio", f"{ratio}%")
+
+    with tabs[1]:
+        meeting_text = st.text_area("Meeting transcript or notes", value=SAMPLE_MEETING, height=180, key="meeting_sum_input")
+        if st.button("Summarize Meeting"):
+            if len(meeting_text.split()) >= 20:
+                with st.spinner("Loading summarizer..."):
+                    summ = load_summarizer()
+                prompt = meeting_text
+                with st.spinner("Summarizing..."):
+                    res, elapsed = timing(summ, prompt, max_length=250, min_length=60, do_sample=False)
+                summary_text = res[0]["summary_text"]
+                st.session_state["summary"] = summary_text
+                st.markdown(f'<span class="timing-badge">{elapsed}s inference</span>', unsafe_allow_html=True)
+                st.markdown("**Meeting Summary**")
+                st.markdown(f'<div class="nlp-card nlp-card-accent" style="font-size:14px;line-height:1.8">{summary_text}</div>', unsafe_allow_html=True)
+                st.download_button("Export Summary", summary_text, "meeting_summary.txt", "text/plain")
+            else:
+                st.warning("Enter a longer meeting transcript.")
+
+    with tabs[2]:
+        if st.session_state["summary"]:
+            orig = st.session_state.get("original_text", "")
+            summ = st.session_state["summary"]
+            st.markdown("**Summary Analytics**")
+            orig_words = len(orig.split()) if orig else 0
+            summ_words = len(summ.split())
+            orig_sents = orig.count(".") + orig.count("!") + orig.count("?") if orig else 0
+            summ_sents = summ.count(".") + summ.count("!") + summ.count("?")
+
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Original Words", orig_words)
+            c2.metric("Summary Words", summ_words)
+            c3.metric("Original Sentences", orig_sents)
+            c4.metric("Summary Sentences", summ_sents)
+
+            if orig_words > 0:
+                fig = go.Figure(go.Bar(
+                    x=["Original", "Summary"],
+                    y=[orig_words, summ_words],
+                    marker_color=["#252a38", "#4f8cff"],
+                    text=[orig_words, summ_words],
+                    textposition="auto",
+                ))
+                fig.update_layout(
+                    template="plotly_dark",
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    font_family="JetBrains Mono",
+                    title="Word Count Comparison",
+                    showlegend=False,
+                    margin=dict(l=0, r=0, t=40, b=0),
+                )
+                st.plotly_chart(fig, use_container_width=True)
+
+            json_download({"original": orig, "summary": summ, "stats": {"original_words": orig_words, "summary_words": summ_words}}, "summary_analytics.json")
+        else:
+            st.info("Run a summarization in the previous tabs first.")
+
+# ─── ACTION EXTRACTION ────────────────────────────────────────────────────────
+elif selected_section == "Action Extraction":
+    render_header("Action Extraction", "Seq2Seq generation — google/flan-t5-base")
+
+    SAMPLE = "The team agreed to review the Q4 budget by Thursday. Alice will send the updated report to Bob. Everyone needs to complete the training module before the Friday deadline. John should schedule a follow-up meeting with the client next week."
+
+    tabs = st.tabs(["Action Items", "Instruction to Task", "Workflow Generation"])
+
+    with tabs[0]:
+        text = st.text_area("Meeting notes or text", value=SAMPLE, height=150, key="action_input")
+        if st.button("Extract Action Items"):
+            if text.strip():
+                with st.spinner("Loading Flan-T5..."):
+                    flan = load_flan()
+                prompt = f"Extract all action items, tasks, and responsibilities from the following text as a numbered list:\n\n{text}"
+                with st.spinner("Extracting actions..."):
+                    res, elapsed = timing(flan, prompt, max_new_tokens=200, do_sample=False)
+                output = res[0]["generated_text"]
+                st.session_state["actions"] = output
+                st.markdown(f'<span class="timing-badge">{elapsed}s</span>', unsafe_allow_html=True)
+                st.markdown("**Extracted Action Items**")
+                st.markdown(f'<div class="output-block">{output}</div>', unsafe_allow_html=True)
+                st.download_button("Export Actions", output, "action_items.txt", "text/plain")
+
+    with tabs[1]:
+        instruction = st.text_area("Enter an instruction or goal", value="Improve customer onboarding process to reduce churn", height=100, key="inst_input")
+        if st.button("Convert to Tasks"):
+            if instruction.strip():
+                with st.spinner("Loading Flan-T5..."):
+                    flan = load_flan()
+                prompt = f"Break down this goal into specific actionable tasks:\n\nGoal: {instruction}\n\nTasks:"
+                with st.spinner("Generating tasks..."):
+                    res, elapsed = timing(flan, prompt, max_new_tokens=200, do_sample=False)
+                output = res[0]["generated_text"]
+                st.markdown(f'<span class="timing-badge">{elapsed}s</span>', unsafe_allow_html=True)
+                st.markdown(f'<div class="output-block">{output}</div>', unsafe_allow_html=True)
+
+    with tabs[2]:
+        workflow_goal = st.text_area("Describe a process or goal", value="Launch a new software product to market", height=100, key="workflow_input")
+        steps_n = st.slider("Number of workflow steps", 3, 8, 5)
+        if st.button("Generate Workflow"):
+            if workflow_goal.strip():
+                with st.spinner("Loading Flan-T5..."):
+                    flan = load_flan()
+                prompt = f"Create a step-by-step workflow with {steps_n} steps for: {workflow_goal}"
+                with st.spinner("Generating workflow..."):
+                    res, elapsed = timing(flan, prompt, max_new_tokens=250, do_sample=False)
+                output = res[0]["generated_text"]
+                st.markdown(f'<span class="timing-badge">{elapsed}s</span>', unsafe_allow_html=True)
+                st.markdown("**Generated Workflow**")
+                st.markdown(f'<div class="output-block">{output}</div>', unsafe_allow_html=True)
+
+                # Visualize as a simple flow
+                steps_text = [s.strip() for s in output.split("\n") if s.strip()][:steps_n]
+                if steps_text:
+                    fig = go.Figure()
+                    for i, step in enumerate(steps_text):
+                        fig.add_annotation(
+                            x=0.5, y=1 - i / max(len(steps_text), 1),
+                            text=f"Step {i+1}: {step[:60]}",
+                            showarrow=False,
+                            font=dict(size=11, color="#e8eaf0", family="JetBrains Mono"),
+                            xanchor="center", align="center",
+                            bgcolor="#161922", bordercolor="#4f8cff", borderwidth=1,
+                        )
+                    fig.update_layout(
+                        height=max(200, len(steps_text) * 60),
+                        paper_bgcolor="rgba(0,0,0,0)",
+                        plot_bgcolor="rgba(0,0,0,0)",
+                        xaxis=dict(visible=False), yaxis=dict(visible=False),
+                        margin=dict(l=0, r=0, t=10, b=0),
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+
+                json_download({"goal": workflow_goal, "workflow": output}, "workflow.json")
+
+# ─── SEMANTIC EMBEDDINGS ──────────────────────────────────────────────────────
+elif selected_section == "Semantic Embeddings":
+    render_header("Semantic Embeddings", "Dense retrieval — sentence-transformers/all-MiniLM-L6-v2")
+
+    tabs = st.tabs(["Semantic Similarity", "Semantic Retrieval", "Embedding Visualization"])
+
+    with tabs[0]:
+        col1, col2 = st.columns(2)
+        with col1:
+            s1 = st.text_area("Sentence A", value="The project deadline has been moved to next Friday.", height=100, key="sim_s1")
+        with col2:
+            s2 = st.text_area("Sentence B", value="We pushed the project due date to the end of next week.", height=100, key="sim_s2")
+
+        if st.button("Compute Similarity"):
+            if s1.strip() and s2.strip():
+                with st.spinner("Loading embedder..."):
+                    embedder = load_embedder()
+                with st.spinner("Computing embeddings..."):
+                    embs, elapsed = timing(embedder.encode, [s1, s2])
+                    from sklearn.metrics.pairwise import cosine_similarity
+                    score = float(cosine_similarity([embs[0]], [embs[1]])[0][0])
+                st.session_state["similarity_score"] = score
+                st.markdown(f'<span class="timing-badge">{elapsed}s</span>', unsafe_allow_html=True)
+
+                color = "#34d399" if score > 0.7 else "#fbbf24" if score > 0.4 else "#f87171"
+                st.markdown(
+                    f'<div class="nlp-card" style="text-align:center">'
+                    f'<div style="font-size:3rem;font-weight:800;color:{color};font-family:JetBrains Mono">{score:.4f}</div>'
+                    f'<div style="color:var(--text-secondary);font-size:13px;margin-top:0.5rem">Cosine Similarity Score</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+                interp = "Very similar" if score > 0.7 else "Moderately similar" if score > 0.4 else "Semantically different"
+                st.markdown(f"**Interpretation:** {interp} (threshold: >0.7 = high, 0.4-0.7 = medium, <0.4 = low)")
+
+    with tabs[1]:
+        query = st.text_input("Search query", value="machine learning optimization", key="retrieval_query")
+        corpus_raw = st.text_area(
+            "Corpus (one sentence per line)",
+            value="\n".join([
+                "Deep learning requires large amounts of labeled training data.",
+                "The project was approved by the executive committee last Tuesday.",
+                "Neural network training can be accelerated using GPU hardware.",
+                "Our quarterly revenue exceeded expectations for three consecutive quarters.",
+                "Gradient descent is a core optimization algorithm in machine learning.",
+                "The team celebrated their successful product launch in Paris.",
+                "Transformers use self-attention mechanisms to process sequences.",
+                "The new office policy requires all employees to badge in daily.",
+            ]),
+            height=180,
+            key="corpus_input",
+        )
+        top_k = st.slider("Top K results", 1, 5, 3, key="retrieval_k")
+
+        if st.button("Search") and query.strip():
+            corpus = [line.strip() for line in corpus_raw.split("\n") if line.strip()]
+            with st.spinner("Loading embedder..."):
+                embedder = load_embedder()
+            with st.spinner("Computing embeddings..."):
+                q_emb = embedder.encode([query])
+                c_embs = embedder.encode(corpus)
+                from sklearn.metrics.pairwise import cosine_similarity
+                scores = cosine_similarity(q_emb, c_embs)[0]
+            ranked = sorted(enumerate(corpus), key=lambda x: scores[x[0]], reverse=True)[:top_k]
+            st.session_state["retrieval_results"] = [(corpus[i], float(scores[i])) for i, _ in ranked]
+            st.markdown("**Top Matches**")
+            for rank, (i, sent) in enumerate(ranked):
+                score_val = scores[i]
+                st.markdown(
+                    f'<div class="nlp-card" style="margin-bottom:0.5rem">'
+                    f'<div style="display:flex;justify-content:space-between;margin-bottom:4px">'
+                    f'<span style="font-family:var(--mono);font-size:11px;color:var(--accent)">Rank {rank+1}</span>'
+                    f'<span style="font-family:var(--mono);font-size:11px;color:var(--text-muted)">{score_val:.4f}</span>'
+                    f'</div>'
+                    f'<div style="font-size:13px;color:var(--text-primary)">{sent}</div>'
+                    f'<div class="confidence-bar-container"><div class="confidence-bar" style="width:{int(score_val*100)}%"></div></div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+    with tabs[2]:
+        viz_raw = st.text_area(
+            "Sentences to visualize (one per line)",
+            value="\n".join([
+                "Machine learning optimizes model parameters",
+                "Deep learning uses neural networks",
+                "The stock market crashed yesterday",
+                "Financial markets are volatile",
+                "Python is great for data science",
+                "JavaScript dominates web development",
+                "The board approved the Q4 budget",
+                "Revenue grew 23% year-over-year",
+            ]),
+            height=180,
+            key="viz_input",
+        )
+        if st.button("Visualize Embeddings"):
+            sentences = [s.strip() for s in viz_raw.split("\n") if s.strip()]
+            if len(sentences) >= 3:
+                with st.spinner("Loading embedder..."):
+                    embedder = load_embedder()
+                with st.spinner("Computing and projecting embeddings..."):
+                    embs = embedder.encode(sentences)
+                    from sklearn.decomposition import PCA
+                    pca = PCA(n_components=2)
+                    coords = pca.fit_transform(embs)
+                df_viz = pd.DataFrame({
+                    "x": coords[:, 0],
+                    "y": coords[:, 1],
+                    "label": sentences,
+                    "short": [s[:30] + "..." if len(s) > 30 else s for s in sentences],
+                })
+                fig = px.scatter(
+                    df_viz, x="x", y="y", text="short",
+                    template="plotly_dark",
+                    title="Embedding Space (PCA 2D projection)",
+                )
+                fig.update_traces(
+                    marker=dict(size=12, color="#4f8cff", line=dict(color="#252a38", width=1)),
+                    textfont=dict(size=9, color="#8b93a8", family="JetBrains Mono"),
+                    textposition="top center",
+                )
+                fig.update_layout(
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    font_family="JetBrains Mono",
+                    showlegend=False,
+                    xaxis=dict(gridcolor="#252a38", zerolinecolor="#252a38"),
+                    yaxis=dict(gridcolor="#252a38", zerolinecolor="#252a38"),
+                )
+                st.plotly_chart(fig, use_container_width=True)
+                var_explained = pca.explained_variance_ratio_
+                c1, c2 = st.columns(2)
+                c1.metric("PC1 Variance", f"{var_explained[0]:.1%}")
+                c2.metric("PC2 Variance", f"{var_explained[1]:.1%}")
+                json_download(df_viz.to_dict(orient="records"), "embeddings_2d.json")
+            else:
+                st.warning("Enter at least 3 sentences.")
