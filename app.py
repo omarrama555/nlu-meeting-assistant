@@ -25,18 +25,18 @@ st.markdown("""
 @import url('https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600&display=swap');
 
 :root {
-    --bg:      #060d1f;
-    --card:    #0b1428;
-    --card2:   #0f1a33;
-    --border:  #172040;
+    --bg:      #04080f;
+    --card:    #080f1e;
+    --card2:   #0c1526;
+    --border:  #141e35;
     --blue:    #3b82f6;
     --violet:  #7c3aed;
     --cyan:    #06b6d4;
     --green:   #10b981;
     --amber:   #f59e0b;
     --rose:    #f43f5e;
-    --text:    #dde4f0;
-    --muted:   #4a5a7a;
+    --text:    #e2e8f0;
+    --muted:   #3d4f6e;
 }
 
 html, body, [class*="css"] {
@@ -49,7 +49,7 @@ html, body, [class*="css"] {
 
 /* HERO */
 .hero {
-    background: linear-gradient(120deg, #070e22 0%, #0c1530 60%, #070e22 100%);
+    background: linear-gradient(120deg, #04080f 0%, #080f20 60%, #04080f 100%);
     border: 1px solid var(--border);
     border-radius: 18px;
     padding: 2rem 2.5rem 1.8rem;
@@ -60,7 +60,12 @@ html, body, [class*="css"] {
 .hero::before {
     content:''; position:absolute; top:-80px; right:-80px;
     width:320px; height:320px; border-radius:50%;
-    background: radial-gradient(circle, rgba(59,130,246,.1) 0%, transparent 70%);
+    background: radial-gradient(circle, rgba(59,130,246,.12) 0%, transparent 70%);
+}
+.hero::after {
+    content:''; position:absolute; bottom:-60px; left:10%;
+    width:200px; height:200px; border-radius:50%;
+    background: radial-gradient(circle, rgba(124,58,237,.07) 0%, transparent 70%);
 }
 .hero-title {
     font-family:'Syne',sans-serif; font-size:2.2rem; font-weight:800;
@@ -71,8 +76,8 @@ html, body, [class*="css"] {
 .hero-sub { color:var(--muted); font-size:.85rem; font-family:'DM Mono',monospace; margin:0 0 1rem; }
 .pills { display:flex; flex-wrap:wrap; gap:.4rem; }
 .pill {
-    background:rgba(59,130,246,.1); border:1px solid rgba(59,130,246,.25);
-    color:#93c5fd; padding:.2rem .7rem; border-radius:30px;
+    background:rgba(59,130,246,.08); border:1px solid rgba(59,130,246,.2);
+    color:#7eb3f8; padding:.2rem .7rem; border-radius:30px;
     font-size:.72rem; font-family:'DM Mono',monospace;
 }
 
@@ -103,7 +108,7 @@ html, body, [class*="css"] {
 .mcard.c::before { background:linear-gradient(90deg,#06b6d4,#7c3aed); }
 .mlabel { color:var(--muted); font-size:.65rem; text-transform:uppercase; letter-spacing:1px; font-family:'DM Mono',monospace; }
 .mval   { font-family:'Syne',sans-serif; font-size:1.8rem; font-weight:800; color:var(--text); line-height:1.1; }
-.micon  { position:absolute; top:.9rem; right:.9rem; font-size:1.3rem; opacity:.3; }
+.micon  { position:absolute; top:.9rem; right:.9rem; font-size:1.3rem; opacity:.25; }
 
 /* SECTION CARD */
 .scard {
@@ -121,10 +126,10 @@ html, body, [class*="css"] {
 
 /* SUMMARY */
 .summary {
-    background:linear-gradient(135deg,rgba(59,130,246,.07),rgba(124,58,237,.04));
-    border:1px solid rgba(59,130,246,.18); border-radius:10px;
+    background:linear-gradient(135deg,rgba(59,130,246,.06),rgba(124,58,237,.03));
+    border:1px solid rgba(59,130,246,.15); border-radius:10px;
     padding:1rem 1.3rem; font-size:.92rem; line-height:1.75;
-    color:#c8d4e8; font-style:italic;
+    color:#b8c8e0; font-style:italic;
 }
 
 /* ENTITY */
@@ -134,12 +139,12 @@ html, body, [class*="css"] {
     font-size:.77rem; font-family:'DM Mono',monospace;
     margin:.2rem;
 }
-.PER  { background:rgba(124,58,237,.15);  border:1px solid rgba(124,58,237,.35); color:#c4b5fd; }
-.ORG  { background:rgba(59,130,246,.15);  border:1px solid rgba(59,130,246,.35); color:#93c5fd; }
-.LOC  { background:rgba(16,185,129,.15);  border:1px solid rgba(16,185,129,.35); color:#6ee7b7; }
-.MISC { background:rgba(245,158,11,.15);  border:1px solid rgba(245,158,11,.35); color:#fcd34d; }
-.DATE { background:rgba(244,63,94,.15);   border:1px solid rgba(244,63,94,.35);  color:#fda4af; }
-.EDEF { background:rgba(74,90,122,.15);   border:1px solid rgba(74,90,122,.35);  color:#94a3b8; }
+.PER  { background:rgba(124,58,237,.12);  border:1px solid rgba(124,58,237,.3); color:#c4b5fd; }
+.ORG  { background:rgba(59,130,246,.12);  border:1px solid rgba(59,130,246,.3); color:#93c5fd; }
+.LOC  { background:rgba(16,185,129,.12);  border:1px solid rgba(16,185,129,.3); color:#6ee7b7; }
+.MISC { background:rgba(245,158,11,.12);  border:1px solid rgba(245,158,11,.3); color:#fcd34d; }
+.DATE { background:rgba(244,63,94,.12);   border:1px solid rgba(244,63,94,.3);  color:#fda4af; }
+.EDEF { background:rgba(74,90,122,.12);   border:1px solid rgba(74,90,122,.3);  color:#94a3b8; }
 
 /* ACTION */
 .aitem {
@@ -163,7 +168,7 @@ html, body, [class*="css"] {
 }
 .ilabel { color:#c8d4e8; font-size:.8rem; font-family:'DM Mono',monospace; }
 .ibadge {
-    background:rgba(59,130,246,.18); color:#93c5fd;
+    background:rgba(59,130,246,.15); color:#93c5fd;
     padding:.1rem .55rem; border-radius:20px; font-size:.72rem; font-weight:600;
 }
 
@@ -193,19 +198,80 @@ html, body, [class*="css"] {
 .empty-sub   { font-size:.83rem; font-family:'DM Mono',monospace; color:#1e2d47; }
 
 /* STREAMLIT OVERRIDES */
-[data-testid="stSidebar"] { background:var(--card) !important; border-right:1px solid var(--border) !important; }
-[data-testid="stSidebar"] h3 { font-family:'Syne',sans-serif !important; color:#60a5fa !important; font-size:.78rem !important; text-transform:uppercase; letter-spacing:1.5px; margin-top:1.2rem; }
-.stTextArea textarea { background:var(--card2) !important; color:var(--text) !important; border:1px solid var(--border) !important; border-radius:9px !important; font-family:'DM Sans',sans-serif !important; font-size:.88rem !important; }
-.stButton > button { background:linear-gradient(135deg,#1e40af,#6d28d9) !important; color:#fff !important; border:none !important; border-radius:9px !important; font-family:'Syne',sans-serif !important; font-weight:700 !important; font-size:.9rem !important; width:100% !important; padding:.55rem 1.5rem !important; transition:opacity .2s !important; }
+[data-testid="stSidebar"] {
+    background:var(--card) !important;
+    border-right:1px solid var(--border) !important;
+}
+[data-testid="stSidebar"] h3 {
+    font-family:'Syne',sans-serif !important;
+    color:#60a5fa !important;
+    font-size:.78rem !important;
+    text-transform:uppercase;
+    letter-spacing:1.5px;
+    margin-top:1.2rem;
+}
+.stTextArea textarea {
+    background:var(--card2) !important;
+    color:var(--text) !important;
+    border:1px solid var(--border) !important;
+    border-radius:9px !important;
+    font-family:'DM Sans',sans-serif !important;
+    font-size:.88rem !important;
+}
+.stButton > button {
+    background:linear-gradient(135deg,#1e3a8a,#5b21b6) !important;
+    color:#e2e8f0 !important;
+    border:1px solid rgba(59,130,246,.2) !important;
+    border-radius:9px !important;
+    font-family:'Syne',sans-serif !important;
+    font-weight:700 !important;
+    font-size:.9rem !important;
+    width:100% !important;
+    padding:.55rem 1.5rem !important;
+    transition:opacity .2s !important;
+}
 .stButton > button:hover { opacity:.82 !important; }
-.stDownloadButton > button { background:linear-gradient(135deg,#1e40af,#6d28d9) !important; color:#fff !important; border:none !important; border-radius:9px !important; font-family:'Syne',sans-serif !important; font-weight:600 !important; }
-.stTabs [data-baseweb="tab-list"] { background:var(--card) !important; border-radius:9px !important; padding:.2rem !important; }
-.stTabs [data-baseweb="tab"] { color:var(--muted) !important; font-family:'Syne',sans-serif !important; font-weight:600 !important; font-size:.82rem !important; }
-.stTabs [aria-selected="true"] { background:rgba(59,130,246,.18) !important; color:#93c5fd !important; border-radius:7px !important; }
-div[data-testid="stExpander"] { background:var(--card2) !important; border:1px solid var(--border) !important; border-radius:9px !important; }
+.stDownloadButton > button {
+    background:linear-gradient(135deg,#1e3a8a,#5b21b6) !important;
+    color:#e2e8f0 !important;
+    border:1px solid rgba(59,130,246,.2) !important;
+    border-radius:9px !important;
+    font-family:'Syne',sans-serif !important;
+    font-weight:600 !important;
+}
+.stTabs [data-baseweb="tab-list"] {
+    background:var(--card) !important;
+    border-radius:9px !important;
+    padding:.2rem !important;
+    border:1px solid var(--border) !important;
+}
+.stTabs [data-baseweb="tab"] {
+    color:var(--muted) !important;
+    font-family:'Syne',sans-serif !important;
+    font-weight:600 !important;
+    font-size:.82rem !important;
+}
+.stTabs [aria-selected="true"] {
+    background:rgba(59,130,246,.15) !important;
+    color:#93c5fd !important;
+    border-radius:7px !important;
+}
+div[data-testid="stExpander"] {
+    background:var(--card2) !important;
+    border:1px solid var(--border) !important;
+    border-radius:9px !important;
+}
 .stRadio > div { gap:.4rem !important; }
 .stCheckbox span { color:var(--text) !important; font-size:.85rem !important; }
 p, li, label { color:var(--text) !important; }
+[data-testid="stMarkdownContainer"] p { color:var(--text) !important; }
+.stAlert { background:var(--card2) !important; border:1px solid var(--border) !important; border-radius:9px !important; }
+input, select { background:var(--card2) !important; color:var(--text) !important; border:1px solid var(--border) !important; }
+[data-testid="stFileUploader"] {
+    background:var(--card2) !important;
+    border:1px dashed var(--border) !important;
+    border-radius:9px !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -223,10 +289,18 @@ def load_models():
     device = 0 if torch.cuda.is_available() else -1
     models = {}
 
-    # 1. Intent — roberta-base
-    ic_tok   = AutoTokenizer.from_pretrained("roberta-base")
-    ic_model = AutoModelForSequenceClassification.from_pretrained("roberta-base")
-    models["intent"] = pipeline("text-classification", model=ic_model, tokenizer=ic_tok, device=device)
+    # 1. Intent — zero-shot-classification (works without fine-tuning on any label set)
+    models["intent"] = pipeline(
+        "zero-shot-classification",
+        model="facebook/bart-large-mnli",
+        device=device,
+    )
+    # Labels used for intent classification
+    models["intent_labels"] = [
+        "task assignment", "decision made", "question asked",
+        "information sharing", "follow-up required", "blocker reported",
+        "approval requested", "status update",
+    ]
 
     # 2. NER — bert finetuned conll03
     models["ner"] = pipeline(
@@ -236,7 +310,7 @@ def load_models():
         device=device,
     )
 
-    # 3. Summarizer — bart-large-cnn via AutoModel (no pipeline task string)
+    # 3. Summarizer — bart-large-cnn via AutoModel (avoids pipeline task string issue)
     summ_tok   = AutoTokenizer.from_pretrained("facebook/bart-large-cnn")
     summ_model = AutoModelForSeq2SeqLM.from_pretrained("facebook/bart-large-cnn")
     summ_model.eval()
@@ -285,11 +359,19 @@ def transcribe_audio(audio_bytes, stt_pipe):
         os.unlink(tmp_path)
 
 
-def run_intent(sentences, ic_pipe, max_s):
-    if not sentences: return []
-    res = ic_pipe(sentences[:max_s], truncation=True, max_length=128)
-    return [{"sentence": s, "intent": r["label"], "confidence": round(r["score"], 4)}
-            for s, r in zip(sentences[:max_s], res)]
+def run_intent(sentences, zsc_pipe, intent_labels, max_s):
+    """Zero-shot classification — no fine-tuning needed, works on any label set."""
+    if not sentences:
+        return []
+    results = []
+    for sent in sentences[:max_s]:
+        out = zsc_pipe(sent, candidate_labels=intent_labels, truncation=True)
+        results.append({
+            "sentence":   sent,
+            "intent":     out["labels"][0],
+            "confidence": round(out["scores"][0], 4),
+        })
+    return results
 
 
 def run_ner(sentences, ner_pipe, max_s):
@@ -369,11 +451,11 @@ def main():
         <p class="hero-sub">Voice-to-Action · 6 Transformer Models · End-to-End NLP Pipeline</p>
         <div class="pills">
             <span class="pill">🎙️ Whisper STT</span>
-            <span class="pill">🎯 RoBERTa Intent</span>
+            <span class="pill">🎯 BART Zero-Shot Intent</span>
             <span class="pill">🏷️ BERT NER</span>
             <span class="pill">📋 BART Summary</span>
             <span class="pill">✅ T5 Actions</span>
-            <span class="pill">🔗 MPNet Embed</span>
+            <span class="pill">🔗 MiniLM Embed</span>
         </div>
     </div>""", unsafe_allow_html=True)
 
@@ -382,7 +464,7 @@ def main():
     <div class="pipe">
         <div class="pipe-step"><div class="pipe-icon">🎙️</div><div class="pipe-name">Whisper</div><div class="pipe-sub">STT</div></div>
         <span class="pipe-arr">→</span>
-        <div class="pipe-step"><div class="pipe-icon">🎯</div><div class="pipe-name">RoBERTa</div><div class="pipe-sub">Intent</div></div>
+        <div class="pipe-step"><div class="pipe-icon">🎯</div><div class="pipe-name">BART</div><div class="pipe-sub">Intent</div></div>
         <span class="pipe-arr">→</span>
         <div class="pipe-step"><div class="pipe-icon">🏷️</div><div class="pipe-name">BERT</div><div class="pipe-sub">NER</div></div>
         <span class="pipe-arr">→</span>
@@ -390,7 +472,7 @@ def main():
         <span class="pipe-arr">→</span>
         <div class="pipe-step"><div class="pipe-icon">✅</div><div class="pipe-name">T5</div><div class="pipe-sub">Actions</div></div>
         <span class="pipe-arr">→</span>
-        <div class="pipe-step"><div class="pipe-icon">🔗</div><div class="pipe-name">MPNet</div><div class="pipe-sub">Embeddings</div></div>
+        <div class="pipe-step"><div class="pipe-icon">🔗</div><div class="pipe-name">MiniLM</div><div class="pipe-sub">Embeddings</div></div>
     </div>""", unsafe_allow_html=True)
 
     # SIDEBAR
@@ -405,8 +487,8 @@ def main():
         show_timing = st.checkbox("Processing times",   True)
         show_json   = st.checkbox("Raw JSON",           False)
         st.markdown("---")
-        st.markdown("""<div style="color:#1e2d47;font-size:.72rem;font-family:'DM Mono',monospace;line-height:1.9;">
-        openai/whisper-base<br>roberta-base<br>bert-cased-conll03<br>
+        st.markdown("""<div style="color:#2a3a55;font-size:.72rem;font-family:'DM Mono',monospace;line-height:1.9;">
+        openai/whisper-base<br>facebook/bart-large-mnli<br>bert-cased-conll03<br>
         facebook/bart-large-cnn<br>google/flan-t5-base<br>all-MiniLM-L6-v2</div>""",
         unsafe_allow_html=True)
 
@@ -454,7 +536,7 @@ def main():
         bar   = st.progress(0, text="Running pipeline…")
 
         t = time.time()
-        res["intents"] = run_intent(sents, M["intent"], max_ic)
+        res["intents"] = run_intent(sents, M["intent"], M["intent_labels"], max_ic)
         res["timing"]["Intent"]  = round(time.time()-t, 2); bar.progress(20)
 
         t = time.time()
@@ -584,15 +666,15 @@ def main():
         if len(emb) > 0:
             sh = emb.shape
             st.markdown(f"""<div style="display:flex;gap:.8rem;flex-wrap:wrap;margin-bottom:1rem;">
-            <div style="background:rgba(6,182,212,.1);border:1px solid rgba(6,182,212,.25);border-radius:8px;padding:.5rem 1rem;">
+            <div style="background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.2);border-radius:8px;padding:.5rem 1rem;">
                 <div style="color:var(--muted);font-size:.65rem;font-family:'DM Mono',monospace;">SENTENCES</div>
                 <div style="color:#22d3ee;font-family:'Syne',sans-serif;font-size:1.4rem;font-weight:800;">{sh[0]}</div>
             </div>
-            <div style="background:rgba(124,58,237,.1);border:1px solid rgba(124,58,237,.25);border-radius:8px;padding:.5rem 1rem;">
+            <div style="background:rgba(124,58,237,.08);border:1px solid rgba(124,58,237,.2);border-radius:8px;padding:.5rem 1rem;">
                 <div style="color:var(--muted);font-size:.65rem;font-family:'DM Mono',monospace;">DIMENSIONS</div>
                 <div style="color:#a78bfa;font-family:'Syne',sans-serif;font-size:1.4rem;font-weight:800;">{sh[1]}</div>
             </div>
-            <div style="background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.25);border-radius:8px;padding:.5rem 1rem;">
+            <div style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.2);border-radius:8px;padding:.5rem 1rem;">
                 <div style="color:var(--muted);font-size:.65rem;font-family:'DM Mono',monospace;">TOTAL VALUES</div>
                 <div style="color:#34d399;font-family:'Syne',sans-serif;font-size:1.4rem;font-weight:800;">{sh[0]*sh[1]:,}</div>
             </div></div>""", unsafe_allow_html=True)
@@ -604,8 +686,8 @@ def main():
             for row in preview:
                 for val in row:
                     n = (val - vmin) / max(vmax - vmin, 1e-8)
-                    bg = f"rgba(59,{int(130+n*52)},{int(246-n*34)},{.12+n*.25})"
-                    cells += f'<div style="height:30px;border-radius:4px;background:{bg};display:flex;align-items:center;justify-content:center;font-size:.6rem;font-family:\'DM Mono\',monospace;color:rgba(255,255,255,.4);">{val:.2f}</div>'
+                    bg = f"rgba(59,{int(130+n*52)},{int(246-n*34)},{.1+n*.22})"
+                    cells += f'<div style="height:30px;border-radius:4px;background:{bg};display:flex;align-items:center;justify-content:center;font-size:.6rem;font-family:\'DM Mono\',monospace;color:rgba(255,255,255,.35);">{val:.2f}</div>'
             st.markdown(f'<div style="display:grid;grid-template-columns:repeat(20,1fr);gap:2px;margin-top:.3rem;">{cells}</div>', unsafe_allow_html=True)
 
             if show_sim and len(emb) > 1:
