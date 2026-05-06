@@ -4,6 +4,7 @@ streamlit>=1.32.0
 # ─── PyTorch (Python 3.14 compatible) ───────────────────────────────────────
 torch>=2.9.0
 torchaudio>=2.9.0
+torchvision  # أو شيل أي model محتاجه
 
 # ─── Core NLP (Whisper via transformers, no openai-whisper needed) ───────────
 transformers>=4.40.0
