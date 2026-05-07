@@ -508,10 +508,14 @@ def get_ner():
 
 @st.cache_resource(show_spinner=False)
 def get_summarizer():
-    from transformers import pipeline as hf_pipeline
+    from transformers import BartForConditionalGeneration, BartTokenizer, pipeline as hf_pipeline
+    model_name = "facebook/bart-large-cnn"
+    tokenizer = BartTokenizer.from_pretrained(model_name)
+    model = BartForConditionalGeneration.from_pretrained(model_name)
     return hf_pipeline(
         "summarization",
-        model="facebook/bart-large-cnn",
+        model=model,
+        tokenizer=tokenizer,
         device=0 if DEVICE == "cuda" else -1,
     )
 
@@ -566,9 +570,16 @@ def page_header(title, subtitle, badge_html=""):
     </div>""", unsafe_allow_html=True)
 
 def dl_json(data, fname):
+    def _serialize(obj):
+        """Convert numpy/non-serializable types to native Python."""
+        import numpy as _np
+        if isinstance(obj, _np.floating): return float(obj)
+        if isinstance(obj, _np.integer):  return int(obj)
+        if isinstance(obj, _np.ndarray):  return obj.tolist()
+        raise TypeError(f"Not serializable: {type(obj)}")
     st.download_button(
         "⬇ Export JSON",
-        json.dumps(data, indent=2, ensure_ascii=False),
+        json.dumps(data, indent=2, ensure_ascii=False, default=_serialize),
         file_name=fname, mime="application/json"
     )
 
@@ -794,16 +805,20 @@ elif PAGE == "Speech To Text":
         run_btn = st.button("▶ Run Transcription", disabled=afile is None)
 
         if run_btn and afile:
-            tmp = f"/tmp/stt_{int(time.time())}.audio"
-            with open(tmp, "wb") as f:
-                f.write(abytes)
             with st.spinner("Loading Whisper... (first load takes ~30s)"):
                 asr = safe_run(get_whisper, err_msg="Whisper load failed")
             if asr:
-                prog = st.progress(0, "Transcribing audio...")
-                t0 = time.time()
-                res = safe_run(asr, tmp, generate_kwargs={"task": task_mode}, err_msg="Transcription failed")
-                if res:
+                prog = st.progress(0, "Loading audio...")
+                try:
+                    import librosa, soundfile as sf, io as _io
+                    audio_buf = _io.BytesIO(abytes)
+                    # librosa handles mp3/wav/m4a without system ffmpeg
+                    y, sr = librosa.load(audio_buf, sr=16000, mono=True)
+                    prog.progress(0.3, "Transcribing...")
+                    t0 = time.time()
+                    # Pass numpy array directly — no file path needed
+                    res = asr({"array": y, "sampling_rate": 16000},
+                              generate_kwargs={"task": task_mode})
                     elapsed = round(time.time() - t0, 2)
                     prog.progress(1.0, "Complete ✓")
                     st.session_state["transcript"] = res["text"]
@@ -811,6 +826,9 @@ elif PAGE == "Speech To Text":
                     st.session_state["transcript_time"] = elapsed
                     log_inf("Whisper STT", elapsed, len(res["text"].split()))
                     st.rerun()
+                except Exception as e:
+                    prog.empty()
+                    st.error(f"⚠️ Audio processing failed: {str(e)[:250]}")
 
     with right:
         st.markdown('<div class="slbl">Transcription Output</div>', unsafe_allow_html=True)
@@ -860,22 +878,26 @@ elif PAGE == "Intent Classification":
       </div>
     </div>""", unsafe_allow_html=True)
 
-    DEFAULT_LABELS = [
-        "schedule meeting","send email","create task","approve document",
-        "request update","cancel appointment","provide feedback",
-        "escalate issue","assign responsibility","set deadline"
+    MEETING_INTENTS = [
+        "create_meeting", "cancel_meeting", "reschedule_meeting", "summarize_meeting",
+        "assign_task", "create_action_items", "generate_report", "question_answering",
+        "semantic_search", "send_email", "participant_management", "workflow_generation",
+        "meeting_analytics", "document_search", "translate_message",
     ]
+    INTENT_DISPLAY = [i.replace("_"," ").title() for i in MEETING_INTENTS]
+
     tabs = st.tabs(["Intent Prediction", "Multi-Intent Ranking", "Custom Label Classification"])
 
     with tabs[0]:
         tin = st.text_area("Input text", value=st.session_state.get("intent_text",""),
-                           placeholder="Enter meeting sentence to classify...", height=100, key="ii1")
+                           placeholder="e.g. Can you schedule a meeting with the team for Monday?", height=100, key="ii1")
+        top5_display = INTENT_DISPLAY[:7]
         if st.button("▶ Predict Intent", key="bi1"):
             if tin.strip():
                 with st.spinner("Loading BART classifier..."):
                     clf = safe_run(get_intent_clf, err_msg="BART load failed")
                 if clf:
-                    res, elapsed = timed(clf, tin, candidate_labels=DEFAULT_LABELS[:5], multi_label=False)
+                    res, elapsed = timed(clf, tin, candidate_labels=top5_display, multi_label=False)
                     st.session_state["intents"] = list(zip(res["labels"], res["scores"]))
                     st.session_state["intent_text"] = tin
                     log_inf("BART Intent", elapsed, len(tin.split()))
@@ -901,7 +923,7 @@ elif PAGE == "Intent Classification":
                 with st.spinner("Ranking intents..."):
                     clf = safe_run(get_intent_clf, err_msg="BART load failed")
                 if clf:
-                    res, elapsed = timed(clf, tin2, candidate_labels=DEFAULT_LABELS, multi_label=True)
+                    res, elapsed = timed(clf, tin2, candidate_labels=INTENT_DISPLAY, multi_label=True)
                     log_inf("BART Intent", elapsed, len(tin2.split()))
                     df = pd.DataFrame({
                         "Intent": res["labels"][:topk],
@@ -925,7 +947,7 @@ elif PAGE == "Intent Classification":
     with tabs[2]:
         tin3 = st.text_area("Input text", placeholder="Describe the meeting action...", height=100, key="ii3")
         craw = st.text_input("Custom labels (comma-separated)",
-            value="approve budget, reject proposal, request clarification, defer decision, escalate to manager", key="cl")
+            value="Assign Task, Generate Report, Schedule Follow-up, Request Update, Approve Decision, Escalate Issue", key="cl")
         if st.button("▶ Classify", key="bi3"):
             lbls = [l.strip() for l in craw.split(",") if l.strip()]
             if tin3.strip() and lbls:
@@ -964,12 +986,12 @@ elif PAGE == "Named Entity Recognition":
     )
     st.markdown("""<div class="card card-a" style="margin-bottom:1.5rem">
       <div style="font-size:12px;color:var(--t2);line-height:1.8">
-        BERT fine-tuned on CoNLL-2003 NER. Entity types:
+        BERT fine-tuned on CoNLL-2003 NER. Standard entity types:
         <span style="color:#93c5fd">PER</span> (persons),
         <span style="color:#5eead4">ORG</span> (organizations),
         <span style="color:#fcd34d">LOC</span> (locations),
-        <span style="color:#c4b5fd">MISC</span> (miscellaneous).
-        Aggregation strategy: <b style="color:var(--t1)">simple</b> (merges word-piece tokens).
+        <span style="color:#c4b5fd">MISC</span> (dates, times, emails, deadlines, project names).
+        Meeting-aware post-processing extracts speakers, deadlines, and task entities.
       </div>
     </div>""", unsafe_allow_html=True)
 
@@ -987,26 +1009,49 @@ The board meeting with Amazon representatives is set for next Thursday in New Yo
                     ner = safe_run(get_ner, err_msg="NER model failed")
                 if ner:
                     ents, elapsed = timed(ner, txt_in)
-                    st.session_state["ner_results"] = ents
+                    # Normalize scores to native float to prevent JSON/display issues
+                    ents_clean = []
+                    for e in ents:
+                        ents_clean.append({
+                            "word": str(e["word"]),
+                            "entity_group": str(e["entity_group"]),
+                            "score": float(e["score"]),
+                            "start": int(e["start"]),
+                            "end": int(e["end"]),
+                        })
+                    # Meeting-aware extra extraction via regex
+                    import re as _re
+                    deadline_pat = _re.compile(
+                        r'\b(by\s+\w+day|\btoday\b|\btomorrow\b|\bMonday|Tuesday|Wednesday|Thursday|Friday'
+                        r'|January|February|March|April|May|June|July|August|September|October|November|December'
+                        r'|\d{1,2}/\d{1,2}(?:/\d{2,4})?|Q[1-4]\s*\d{4}|next\s+week)\b', _re.IGNORECASE)
+                    for m in deadline_pat.finditer(txt_in):
+                        # only add if not already covered
+                        overlap = any(e["start"] <= m.start() < e["end"] for e in ents_clean)
+                        if not overlap:
+                            ents_clean.append({"word": m.group(), "entity_group": "DEADLINE",
+                                               "score": 1.0, "start": m.start(), "end": m.end()})
+                    st.session_state["ner_results"] = ents_clean
                     st.session_state["ner_text"] = txt_in
                     log_inf("BERT NER", elapsed, len(txt_in.split()))
                     # Build highlighted HTML
                     out = txt_in
-                    for ent in sorted(ents, key=lambda x: x["start"], reverse=True):
-                        css = {"PER":"ePER","ORG":"eORG","LOC":"eLOC","MISC":"eMISC"}.get(ent["entity_group"],"eDEF")
+                    color_map = {"PER":"ePER","ORG":"eORG","LOC":"eLOC","MISC":"eMISC","DEADLINE":"eLOC"}
+                    for ent in sorted(ents_clean, key=lambda x: x["start"], reverse=True):
+                        css = color_map.get(ent["entity_group"], "eDEF")
                         span = (f'<span class="ent {css}" title="{ent["entity_group"]} '
                                 f'({round(ent["score"]*100,1)}%)">{ent["word"]}</span>')
                         out = out[:ent["start"]] + span + out[ent["end"]:]
                     st.markdown(f'<div style="line-height:2.5;font-size:14px;padding:1rem;background:var(--s2);border:1px solid var(--b1);border-radius:var(--r)">{out}</div>', unsafe_allow_html=True)
                     st.markdown("<br>", unsafe_allow_html=True)
-                    # Legend
                     st.markdown("""<div style="display:flex;gap:1rem;flex-wrap:wrap">
                       <span class="badge bb">PER — Person</span>
                       <span class="badge bt">ORG — Organization</span>
                       <span class="badge ba">LOC — Location</span>
                       <span class="badge bv">MISC — Miscellaneous</span>
+                      <span class="badge ba">DEADLINE — Date/Time</span>
                     </div>""", unsafe_allow_html=True)
-                    st.markdown(f'<div style="margin-top:.75rem">{ttag(elapsed)} {badge(f"{len(ents)} entities","gr")}</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div style="margin-top:.75rem">{ttag(elapsed)} {badge(f"{len(ents_clean)} entities","gr")}</div>', unsafe_allow_html=True)
             else:
                 st.warning("Enter text first.")
 
@@ -1099,531 +1144,4 @@ John: Got it. I'll set up a meeting with the CFO this week."""
             if summ:
                 inp = txt_in[:1024]
                 res, elapsed = timed(summ, inp, max_length=max_len, min_length=min_len, do_sample=False)
-                summary = res[0]["summary_text"]
-                st.session_state["summary"] = summary
-                st.session_state["summary_original"] = txt_in
-                st.session_state["summary_time"] = elapsed
-                log_inf("BART-CNN Summ", elapsed, len(txt_in.split()))
-
-        else:
-            st.warning("Enter transcript text first.")
-
-    if st.session_state["summary"]:
-        s = st.session_state["summary"]
-        orig = st.session_state["summary_original"]
-        elapsed = st.session_state["summary_time"]
-        ratio = round((1 - len(s.split())/max(len(orig.split()),1))*100, 1)
-        st.markdown("<br>", unsafe_allow_html=True)
-        m1,m2,m3,m4 = st.columns(4)
-        m1.metric("Original Words", len(orig.split()))
-        m2.metric("Summary Words", len(s.split()))
-        m3.metric("Compression", f"{ratio}%")
-        m4.metric("Inference Time", f"{elapsed}s")
-        st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown('<div class="slbl">Summary Output</div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="card card-v"><div style="font-size:14px;color:var(--t1);line-height:1.8">{s}</div></div>', unsafe_allow_html=True)
-        e1, e2 = st.columns(2)
-        with e1: st.download_button("⬇ Export TXT", s, "summary.txt", "text/plain")
-        with e2: dl_json({"summary":s,"original_words":len(orig.split()),"summary_words":len(s.split()),"compression":f"{ratio}%","time":elapsed}, "summary.json")
-
-
-# ════════════════════════════════════════════════════════════
-#  ACTION EXTRACTION
-# ════════════════════════════════════════════════════════════
-elif PAGE == "Action Extraction":
-    page_header(
-        "Action Item Extraction",
-        "Extract structured action items, owners, and deadlines from meeting text.",
-        badge("google/flan-t5-base", "r")
-    )
-    st.markdown("""<div class="card card-r" style="margin-bottom:1.5rem">
-      <div style="font-size:12px;color:var(--t2);line-height:1.8">
-        Flan-T5 (instruction-tuned T5) extracts actionable tasks from meeting transcripts.
-        The model is prompted to output a structured list of action items with owners and deadlines.
-        Best results with transcripts ≥ 3 sentences.
-      </div>
-    </div>""", unsafe_allow_html=True)
-
-    auto_fill = st.session_state.get("transcript", "")
-    DEMO = """John: We completed the user authentication module. The database migration is 90% done, we expect to finish by Thursday.
-Sarah: I'll share the new dashboard mockups with the team by end of day today.
-Mike: I'll send a detailed security vulnerability report to all stakeholders by tomorrow morning.
-Alice: We need to schedule a follow-up meeting with the security team next week. Sarah, can you set that up?
-John: I'll set up a meeting with the CFO this week to finalize the Q4 budget before the board meeting on December 5th."""
-
-    tabs = st.tabs(["Extract Actions", "Custom Prompt", "Action Items from Transcript"])
-
-    with tabs[0]:
-        txt_in = st.text_area("Meeting text", value=auto_fill or DEMO, height=180, key="act1")
-        if st.button("▶ Extract Action Items", key="bact1"):
-            if txt_in.strip():
-                prompt = f"Extract all action items, assign owners, and list deadlines from this meeting:\n\n{txt_in[:900]}\n\nAction items:"
-                with st.spinner("Running Flan-T5..."):
-                    flan = safe_run(get_flan, err_msg="Flan-T5 load failed")
-                if flan:
-                    res, elapsed = timed(flan, prompt, max_new_tokens=250, do_sample=False)
-                    output = res[0]["generated_text"]
-                    st.session_state["actions_output"] = output
-                    log_inf("Flan-T5 Action", elapsed, len(txt_in.split()))
-                    st.markdown(f'<div style="margin-bottom:.75rem">{ttag(elapsed)}</div>', unsafe_allow_html=True)
-                    lines = [l.strip() for l in output.strip().split("\n") if l.strip()]
-                    for line in lines:
-                        st.markdown(f'<div class="act-item">✅ {line}</div>', unsafe_allow_html=True)
-                    st.markdown("<br>", unsafe_allow_html=True)
-                    dl_json({"input": txt_in, "action_items": lines, "raw": output, "time": elapsed}, "actions.json")
-            else:
-                st.warning("Enter meeting text first.")
-
-    with tabs[1]:
-        custom_prompt = st.text_area("Custom prompt (use {text} as placeholder)",
-            value="List all decisions made and who is responsible for each from this meeting:\n\n{text}\n\nDecisions and owners:",
-            height=120, key="act_prompt")
-        txt_c = st.text_area("Meeting text", value=auto_fill or DEMO, height=150, key="act2")
-        if st.button("▶ Run Custom Prompt", key="bact2"):
-            if txt_c.strip() and "{text}" in custom_prompt:
-                full_prompt = custom_prompt.replace("{text}", txt_c[:800])
-                with st.spinner("Running Flan-T5..."):
-                    flan = safe_run(get_flan, err_msg="Flan-T5 load failed")
-                if flan:
-                    res, elapsed = timed(flan, full_prompt, max_new_tokens=250, do_sample=False)
-                    output = res[0]["generated_text"]
-                    log_inf("Flan-T5 Action", elapsed)
-                    st.markdown(f'<div style="margin-bottom:.75rem">{ttag(elapsed)}</div>', unsafe_allow_html=True)
-                    st.markdown(f'<div class="mono">{output}</div>', unsafe_allow_html=True)
-            elif "{text}" not in custom_prompt:
-                st.warning("Prompt must contain {text} placeholder.")
-            else:
-                st.warning("Enter meeting text.")
-
-    with tabs[2]:
-        st.markdown("""<div class="card" style="margin-bottom:1rem">
-          <div style="font-size:12px;color:var(--t2);line-height:1.7">
-            Paste a full meeting transcript. The model will split by speaker turns and extract
-            action items per speaker.
-          </div>
-        </div>""", unsafe_allow_html=True)
-        transcript_in = st.text_area("Full transcript (Speaker: text format)", height=200, key="act3",
-            placeholder="Alice: We need to...\nJohn: I'll handle...")
-        if st.button("▶ Analyze by Speaker", key="bact3"):
-            if transcript_in.strip():
-                speakers = {}
-                for line in transcript_in.strip().split("\n"):
-                    if ":" in line:
-                        sp, text = line.split(":", 1)
-                        speakers.setdefault(sp.strip(), []).append(text.strip())
-                if speakers:
-                    with st.spinner("Extracting per-speaker actions..."):
-                        flan = safe_run(get_flan, err_msg="Flan-T5 load failed")
-                    if flan:
-                        t0 = time.time()
-                        for sp, lines in speakers.items():
-                            combined = " ".join(lines)
-                            prompt = f"What action items did {sp} commit to in this meeting text: {combined[:400]}\nAction items:"
-                            res = flan(prompt, max_new_tokens=150, do_sample=False)
-                            output = res[0]["generated_text"]
-                            st.markdown(f"""<div class="card" style="margin-bottom:.5rem">
-                              <div class="meet-role" style="background:var(--blue-d);color:var(--blue)">{sp}</div>
-                              <div style="font-size:13px;color:var(--t2);margin-top:.5rem;line-height:1.7">{output}</div>
-                            </div>""", unsafe_allow_html=True)
-                        elapsed = round(time.time()-t0, 2)
-                        log_inf("Flan-T5 Action", elapsed)
-                        st.markdown(f'{ttag(elapsed)}', unsafe_allow_html=True)
-                else:
-                    st.warning("No speaker turns detected. Format as 'Speaker: text'.")
-            else:
-                st.warning("Enter transcript first.")
-
-
-# ════════════════════════════════════════════════════════════
-#  EMBEDDINGS
-# ════════════════════════════════════════════════════════════
-elif PAGE == "Embeddings":
-    page_header(
-        "Semantic Embeddings",
-        "Sentence-level semantic vectors for similarity search and clustering.",
-        badge("all-MiniLM-L6-v2", "b")
-    )
-    st.markdown("""<div class="card card-b" style="margin-bottom:1.5rem">
-      <div style="font-size:12px;color:var(--t2);line-height:1.8">
-        MiniLM encodes sentences into <b style="color:var(--t1)">384-dimensional</b> L2-normalized vectors.
-        Cosine similarity measures semantic relatedness. Use for meeting search, deduplication, and topic clustering.
-      </div>
-    </div>""", unsafe_allow_html=True)
-
-    tabs = st.tabs(["Similarity Search", "Embedding Visualization", "Semantic Clustering"])
-
-    with tabs[0]:
-        query = st.text_input("Search query", placeholder="Who owns the security audit?", key="emb_q")
-        corpus_raw = st.text_area("Corpus sentences (one per line)", height=150, key="emb_c",
-            value="""Alice will schedule the security team follow-up meeting next week.
-John is responsible for the database migration completion by Thursday.
-Sarah will share the dashboard mockups with the team today.
-Mike will send the vulnerability report to all stakeholders tomorrow.
-John will set up a CFO meeting to finalize the Q4 budget before December 5th.
-The engineering team completed the user authentication module this week.""")
-        if st.button("▶ Search", key="bemb1"):
-            if query.strip() and corpus_raw.strip():
-                sentences = [s.strip() for s in corpus_raw.strip().split("\n") if s.strip()]
-                with st.spinner("Computing embeddings..."):
-                    emb = safe_run(get_embedder, err_msg="Embedder load failed")
-                if emb:
-                    t0 = time.time()
-                    q_vec = emb.encode([query], normalize_embeddings=True)
-                    s_vecs = emb.encode(sentences, normalize_embeddings=True)
-                    scores = (s_vecs @ q_vec.T).flatten().tolist()
-                    elapsed = round(time.time()-t0, 2)
-                    log_inf("MiniLM Embed", elapsed, len(sentences))
-                    df = pd.DataFrame({"Sentence": sentences, "Score": [round(s,4) for s in scores]})
-                    df = df.sort_values("Score", ascending=False).reset_index(drop=True)
-                    st.markdown(f'<div style="margin-bottom:.75rem">{ttag(elapsed)}</div>', unsafe_allow_html=True)
-                    fig = go.Figure(go.Bar(
-                        x=df["Score"], y=df["Sentence"].str[:60]+"…",
-                        orientation="h", marker_color="#4f8ef7", marker_line_width=0,
-                        text=[f"{v:.3f}" for v in df["Score"]], textposition="outside",
-                        textfont=dict(size=10, color="#8899bb")
-                    ))
-                    make_plotly_dark(fig, 280)
-                    fig.update_layout(yaxis=dict(autorange="reversed"))
-                    st.plotly_chart(fig, use_container_width=True)
-                    st.dataframe(df, use_container_width=True, hide_index=True)
-            else:
-                st.warning("Enter query and corpus.")
-
-    with tabs[1]:
-        viz_text = st.text_area("Sentences to visualize (one per line)", height=150, key="emb_v",
-            placeholder="Enter 5-20 meeting sentences...")
-        if st.button("▶ Visualize Embeddings", key="bemb2"):
-            sentences = [s.strip() for s in viz_text.strip().split("\n") if s.strip()]
-            if len(sentences) >= 3:
-                with st.spinner("Computing embeddings..."):
-                    emb = safe_run(get_embedder, err_msg="Embedder load failed")
-                if emb:
-                    t0 = time.time()
-                    vecs = emb.encode(sentences, normalize_embeddings=True)
-                    elapsed = round(time.time()-t0, 2)
-                    log_inf("MiniLM Embed", elapsed)
-                    from sklearn.decomposition import PCA
-                    pca = PCA(n_components=2)
-                    coords = pca.fit_transform(vecs)
-                    df = pd.DataFrame({"x": coords[:,0], "y": coords[:,1],
-                                       "text": [s[:50]+"…" if len(s)>50 else s for s in sentences]})
-                    fig = px.scatter(df, x="x", y="y", text="text", template="plotly_dark")
-                    fig.update_traces(marker=dict(size=12, color="#4f8ef7", opacity=.85),
-                                      textfont=dict(size=10, color="#8899bb"),
-                                      textposition="top center")
-                    make_plotly_dark(fig, 380)
-                    st.markdown(f'<div style="margin-bottom:.5rem">{ttag(elapsed)} {badge("PCA 2D projection","gr")}</div>', unsafe_allow_html=True)
-                    st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.warning("Enter at least 3 sentences.")
-
-    with tabs[2]:
-        cluster_text = st.text_area("Meeting sentences to cluster (one per line)", height=150, key="emb_cl",
-            placeholder="Enter 6+ meeting sentences for clustering...")
-        n_clusters = st.slider("Number of clusters", 2, 8, 3, key="n_cl")
-        if st.button("▶ Cluster", key="bemb3"):
-            sentences = [s.strip() for s in cluster_text.strip().split("\n") if s.strip()]
-            if len(sentences) >= n_clusters:
-                with st.spinner("Clustering..."):
-                    emb = safe_run(get_embedder, err_msg="Embedder load failed")
-                if emb:
-                    from sklearn.cluster import KMeans
-                    from sklearn.decomposition import PCA
-                    t0 = time.time()
-                    vecs = emb.encode(sentences, normalize_embeddings=True)
-                    km = KMeans(n_clusters=n_clusters, random_state=42, n_init="auto")
-                    labels = km.fit_predict(vecs)
-                    elapsed = round(time.time()-t0, 2)
-                    log_inf("MiniLM Embed", elapsed)
-                    pca = PCA(n_components=2)
-                    coords = pca.fit_transform(vecs)
-                    df = pd.DataFrame({"x": coords[:,0], "y": coords[:,1],
-                                       "Cluster": [f"Cluster {l+1}" for l in labels],
-                                       "text": [s[:50]+"…" if len(s)>50 else s for s in sentences]})
-                    fig = px.scatter(df, x="x", y="y", color="Cluster", text="text",
-                                     color_discrete_sequence=["#4f8ef7","#00d4aa","#ffb347","#a78bfa","#ff5e7d","#f472b6","#34d399","#fb923c"],
-                                     template="plotly_dark")
-                    fig.update_traces(marker_size=12, textfont=dict(size=10), textposition="top center")
-                    make_plotly_dark(fig, 380)
-                    st.plotly_chart(fig, use_container_width=True)
-                    for cl in sorted(df["Cluster"].unique()):
-                        group = df[df["Cluster"]==cl]["text"].tolist()
-                        st.markdown(f'<div class="slbl">{cl}</div>', unsafe_allow_html=True)
-                        for s in group:
-                            st.markdown(f'<div class="act-item">{s}</div>', unsafe_allow_html=True)
-            else:
-                st.warning(f"Need at least {n_clusters} sentences.")
-
-
-# ════════════════════════════════════════════════════════════
-#  FULL PIPELINE
-# ════════════════════════════════════════════════════════════
-elif PAGE == "Full Pipeline":
-    page_header(
-        "Full Meeting Pipeline",
-        "End-to-end NLU: run all 6 models on a meeting transcript in one click.",
-        badge("⚡ End-to-End", "t")
-    )
-
-    DEMO = """Alice: Good morning everyone. Let's get started with our weekly product sync. John, can you give us the engineering update?
-John: Sure. We completed the user authentication module this week. The database migration to PostgreSQL is 90% done, we expect to finish by Thursday.
-Sarah: That's great news. On the design side, we finalized the new dashboard mockups. I'll share them with the team by end of day today.
-Alice: Perfect. What about the security audit? Has that been addressed?
-Mike: Yes, we identified three medium-priority vulnerabilities. I'll send a detailed report to all stakeholders by tomorrow morning.
-Alice: We need to schedule a follow-up meeting with the security team next week. Sarah, can you set that up?
-Sarah: Absolutely. I'll send out the calendar invite today.
-Alice: John, please coordinate with finance to get the Q4 budget numbers ready before the board meeting on December 5th.
-John: Got it. I'll set up a meeting with the CFO this week."""
-
-    auto_transcript = st.session_state.get("transcript", "")
-    txt = st.text_area("Meeting transcript", value=auto_transcript or DEMO, height=220, key="pipe_in")
-
-    steps_to_run = st.multiselect(
-        "Pipeline stages to run",
-        ["Intent Classification", "NER", "Summarization", "Action Extraction", "Embeddings"],
-        default=["Intent Classification", "NER", "Summarization", "Action Extraction"],
-        key="pipe_stages"
-    )
-
-    if st.button("▶ Run Full Pipeline", key="bpipe"):
-        if txt.strip() and steps_to_run:
-            results = {"transcript": txt, "stages": {}}
-            total_t = 0
-
-            # Intent
-            if "Intent Classification" in steps_to_run:
-                with st.spinner("Running Intent Classification..."):
-                    clf = safe_run(get_intent_clf, err_msg="BART failed")
-                if clf:
-                    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+|(?<=\n)", txt) if len(s.strip())>5]
-                    intents = []
-                    t0 = time.time()
-                    DEFAULT_LABELS = ["schedule meeting","send email","create task","approve document",
-                                       "request update","cancel appointment","provide feedback","escalate issue"]
-                    for sent in sentences[:10]:
-                        r = clf(sent, candidate_labels=DEFAULT_LABELS[:5], multi_label=False)
-                        intents.append({"sentence": sent, "intent": r["labels"][0], "score": round(r["scores"][0]*100,1)})
-                    elapsed = round(time.time()-t0, 2)
-                    total_t += elapsed
-                    results["stages"]["intent"] = intents
-                    log_inf("BART Intent", elapsed)
-                    st.session_state["pipe_state"]["intent"] = True
-
-            # NER
-            if "NER" in steps_to_run:
-                with st.spinner("Running NER..."):
-                    ner = safe_run(get_ner, err_msg="NER failed")
-                if ner:
-                    ents, elapsed = timed(ner, txt[:800])
-                    total_t += elapsed
-                    results["stages"]["ner"] = [{"entity": e["word"], "type": e["entity_group"], "score": round(e["score"],4)} for e in ents]
-                    log_inf("BERT NER", elapsed)
-                    st.session_state["pipe_state"]["ner"] = True
-
-            # Summarization
-            if "Summarization" in steps_to_run:
-                with st.spinner("Running Summarization..."):
-                    summ = safe_run(get_summarizer, err_msg="BART-CNN failed")
-                if summ:
-                    res, elapsed = timed(summ, txt[:1024], max_length=130, min_length=30, do_sample=False)
-                    total_t += elapsed
-                    results["stages"]["summary"] = res[0]["summary_text"]
-                    st.session_state["summary"] = res[0]["summary_text"]
-                    log_inf("BART-CNN Summ", elapsed)
-                    st.session_state["pipe_state"]["summary"] = True
-
-            # Actions
-            if "Action Extraction" in steps_to_run:
-                with st.spinner("Running Action Extraction..."):
-                    flan = safe_run(get_flan, err_msg="Flan-T5 failed")
-                if flan:
-                    prompt = f"Extract all action items with owners and deadlines from this meeting:\n\n{txt[:800]}\n\nAction items:"
-                    res, elapsed = timed(flan, prompt, max_new_tokens=200, do_sample=False)
-                    total_t += elapsed
-                    output = res[0]["generated_text"]
-                    results["stages"]["actions"] = output
-                    st.session_state["actions_output"] = output
-                    log_inf("Flan-T5 Action", elapsed)
-                    st.session_state["pipe_state"]["actions"] = True
-
-            # Embeddings
-            if "Embeddings" in steps_to_run:
-                with st.spinner("Computing Embeddings..."):
-                    emb_model = safe_run(get_embedder, err_msg="MiniLM failed")
-                if emb_model:
-                    sentences = [s.strip() for s in txt.split("\n") if len(s.strip())>5]
-                    t0 = time.time()
-                    vecs = emb_model.encode(sentences[:15], normalize_embeddings=True)
-                    elapsed = round(time.time()-t0, 2)
-                    total_t += elapsed
-                    results["stages"]["embeddings"] = {"shape": f"{len(vecs)}x{len(vecs[0])}", "sentences": sentences[:15]}
-                    log_inf("MiniLM Embed", elapsed)
-                    st.session_state["pipe_state"]["embeddings"] = True
-
-            st.session_state["pipe_state"]["_results"] = results
-            st.session_state["pipe_state"]["_total_t"] = total_t
-            st.rerun()
-
-    # Show results
-    if st.session_state["pipe_state"].get("_results"):
-        results = st.session_state["pipe_state"]["_results"]
-        total_t = st.session_state["pipe_state"].get("_total_t", 0)
-        st.markdown(f"""<div style="display:flex;align-items:center;gap:10px;margin-bottom:1.5rem">
-          {badge("✓ Pipeline Complete","t")} {ttag(total_t)}
-          {badge(f"{len(results['stages'])} stages","gr")}
-        </div>""", unsafe_allow_html=True)
-
-        if "summary" in results["stages"]:
-            st.markdown('<div class="slbl">📝 Summary</div>', unsafe_allow_html=True)
-            st.markdown(f'<div class="card card-v"><div style="font-size:14px;color:var(--t1);line-height:1.8">{results["stages"]["summary"]}</div></div>', unsafe_allow_html=True)
-
-        if "actions" in results["stages"]:
-            st.markdown('<div class="slbl">✅ Action Items</div>', unsafe_allow_html=True)
-            lines = [l.strip() for l in results["stages"]["actions"].split("\n") if l.strip()]
-            for line in lines:
-                st.markdown(f'<div class="act-item">{line}</div>', unsafe_allow_html=True)
-
-        if "intent" in results["stages"]:
-            st.markdown('<div class="slbl">🎯 Intent per Sentence</div>', unsafe_allow_html=True)
-            df_i = pd.DataFrame(results["stages"]["intent"])
-            st.dataframe(df_i, use_container_width=True, hide_index=True)
-
-        if "ner" in results["stages"]:
-            st.markdown('<div class="slbl">🏷 Named Entities</div>', unsafe_allow_html=True)
-            df_e = pd.DataFrame(results["stages"]["ner"])
-            st.dataframe(df_e, use_container_width=True, hide_index=True)
-
-        st.markdown("<br>", unsafe_allow_html=True)
-        dl_json(results, "full_pipeline_results.json")
-
-
-# ════════════════════════════════════════════════════════════
-#  ANALYTICS
-# ════════════════════════════════════════════════════════════
-elif PAGE == "Analytics":
-    page_header("Session Analytics", "Inference timing, model usage, and session performance.", badge("📊 Live", "t"))
-
-    logs = st.session_state["inference_log"]
-    loaded = st.session_state["models_loaded"]
-
-    if not logs:
-        st.info("No inference calls yet. Run any model to see analytics here.")
-    else:
-        avg_t = round(sum(l["time"] for l in logs) / len(logs), 2)
-        c1,c2,c3,c4 = st.columns(4)
-        c1.metric("Total Calls", len(logs))
-        c2.metric("Models Active", len(loaded))
-        c3.metric("Avg Inference", f"{avg_t}s")
-        c4.metric("Total Tokens", sum(l.get("tokens",0) for l in logs))
-
-        st.markdown("<br>", unsafe_allow_html=True)
-        df_log = pd.DataFrame(logs)
-
-        l, r = st.columns(2)
-        with l:
-            st.markdown('<div class="slbl">Inference Time per Call</div>', unsafe_allow_html=True)
-            fig = px.line(df_log, y="time", x=df_log.index, color="model",
-                          color_discrete_sequence=["#4f8ef7","#00d4aa","#ffb347","#a78bfa","#ff5e7d","#f472b6"],
-                          template="plotly_dark", markers=True)
-            make_plotly_dark(fig, 250)
-            st.plotly_chart(fig, use_container_width=True)
-
-        with r:
-            st.markdown('<div class="slbl">Calls per Model</div>', unsafe_allow_html=True)
-            model_counts = df_log["model"].value_counts().reset_index()
-            model_counts.columns = ["Model","Count"]
-            fig2 = px.bar(model_counts, x="Model", y="Count",
-                          color="Count", color_continuous_scale=["#121a2e","#4f8ef7"],
-                          template="plotly_dark")
-            make_plotly_dark(fig2, 250)
-            fig2.update_coloraxes(showscale=False)
-            st.plotly_chart(fig2, use_container_width=True)
-
-        st.markdown('<div class="slbl">Inference Log</div>', unsafe_allow_html=True)
-        st.dataframe(df_log[["ts","model","time","tokens"]], use_container_width=True, hide_index=True)
-        dl_json(logs, "inference_log.json")
-
-
-# ════════════════════════════════════════════════════════════
-#  SYSTEM MONITOR
-# ════════════════════════════════════════════════════════════
-elif PAGE == "System Monitor":
-    page_header("System Monitor", "Environment, hardware, and runtime diagnostics.", badge("🖥 Live", "a"))
-
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown('<div class="slbl">Runtime Environment</div>', unsafe_allow_html=True)
-        import sys, platform
-        env_data = {
-            "Python": sys.version.split()[0],
-            "Platform": platform.system(),
-            "Architecture": platform.machine(),
-            "Compute": DEVICE.upper(),
-        }
-        try:
-            import torch
-            env_data["PyTorch"] = torch.__version__
-            env_data["CUDA Available"] = str(torch.cuda.is_available())
-            if torch.cuda.is_available():
-                env_data["GPU"] = torch.cuda.get_device_name(0)
-        except Exception:
-            env_data["PyTorch"] = "Not loaded"
-        try:
-            import transformers
-            env_data["Transformers"] = transformers.__version__
-        except Exception:
-            pass
-        try:
-            import streamlit as _st
-            env_data["Streamlit"] = _st.__version__
-        except Exception:
-            pass
-
-        for k, v in env_data.items():
-            st.markdown(f"""<div style="display:flex;justify-content:space-between;align-items:center;
-              padding:.5rem 0;border-bottom:1px solid var(--b1)">
-              <span style="font-size:12px;color:var(--t3);font-family:'Syne',sans-serif;font-weight:600">{k}</span>
-              <span style="font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--t2)">{v}</span>
-            </div>""", unsafe_allow_html=True)
-
-    with c2:
-        st.markdown('<div class="slbl">Memory & Resources</div>', unsafe_allow_html=True)
-        try:
-            import psutil
-            ram = psutil.virtual_memory()
-            cpu = psutil.cpu_percent(interval=0.5)
-            st.markdown(f"""<div class="card">
-              <div style="display:flex;justify-content:space-between;margin-bottom:1rem">
-                <div><div class="slb">RAM Used</div>
-                  <div style="font-size:1.4rem;font-weight:800;font-family:'Syne',sans-serif">{round(ram.used/1e9,1)} GB</div>
-                  <div style="font-size:11px;color:var(--t3)">{ram.percent}% of {round(ram.total/1e9,1)} GB</div>
-                </div>
-                <div><div class="slb">CPU Usage</div>
-                  <div style="font-size:1.4rem;font-weight:800;font-family:'Syne',sans-serif">{cpu}%</div>
-                </div>
-              </div>
-              <div class="ct" style="height:8px;margin-top:.5rem">
-                <div class="cf" style="width:{ram.percent}%;background:{'var(--red)' if ram.percent>85 else 'var(--blue)'}"></div>
-              </div>
-            </div>""", unsafe_allow_html=True)
-        except ImportError:
-            st.info("Install `psutil` to see memory stats.")
-        except Exception as e:
-            st.warning(f"Resource monitor unavailable: {e}")
-
-        st.markdown('<div class="slbl" style="margin-top:1.5rem">Session Info</div>', unsafe_allow_html=True)
-        start = st.session_state["session_start"]
-        try:
-            start_dt = datetime.fromisoformat(start)
-            duration = datetime.now() - start_dt
-            mins = int(duration.total_seconds() // 60)
-            secs = int(duration.total_seconds() % 60)
-            dur_str = f"{mins}m {secs}s"
-        except Exception:
-            dur_str = "—"
-        st.markdown(f"""<div class="card">
-          <div style="font-size:12px;color:var(--t3);margin-bottom:4px">Session Started</div>
-          <div style="font-size:13px;font-family:'JetBrains Mono',monospace;color:var(--t2)">{start}</div>
-          <div style="font-size:12px;color:var(--t3);margin-top:.75rem;margin-bottom:4px">Duration</div>
-          <div style="font-size:13px;font-family:'JetBrains Mono',monospace;color:var(--t2)">{dur_str}</div>
-        </div>""", unsafe_allow_html=True)
+                summary = r
